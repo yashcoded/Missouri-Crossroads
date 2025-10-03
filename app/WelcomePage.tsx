@@ -21,7 +21,7 @@ const WelcomePage: React.FC = () => {
         <h1 className="text-black text-9xl font-extrabold" style={{ 
           textShadow: "2px 2px 4px rgba(255, 255, 255, 0.8)" 
         }}>
-          Missouri CrossRoads
+          Missouri Crossroads
         </h1>
       </div>
     </div>
