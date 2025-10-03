@@ -37,7 +37,6 @@ export default function MissouriMap({ fileName }: MissouriMapProps) {
   const [geocodingProgress, setGeocodingProgress] = useState(0);
   const [userLocation, setUserLocation] = useState<{lat: number, lng: number} | null>(null);
   const [locationLoading, setLocationLoading] = useState(true);
-  const [viewportLocations, setViewportLocations] = useState<LocationData[]>([]);
   const [loadedBounds, setLoadedBounds] = useState<any>(null);
   const [loadingViewport, setLoadingViewport] = useState(false);
   const [loadingTimeout, setLoadingTimeout] = useState(false);
@@ -74,11 +73,11 @@ export default function MissouriMap({ fileName }: MissouriMapProps) {
           }
           setLocationLoading(false);
         },
-        (error) => {
-          console.log(`📍 Location access denied, defaulting to St. Louis`);
-          setUserLocation({ lat: 38.6270, lng: -90.1994 }); // St. Louis coordinates
-          setLocationLoading(false);
-        },
+            () => {
+              console.log(`📍 Location access denied, defaulting to St. Louis`);
+              setUserLocation({ lat: 38.6270, lng: -90.1994 }); // St. Louis coordinates
+              setLocationLoading(false);
+            },
         { timeout: 5000, enableHighAccuracy: false }
       );
     } else {
@@ -192,7 +191,7 @@ export default function MissouriMap({ fileName }: MissouriMapProps) {
   const fetchCSVData = useCallback(async (centerLat?: number, centerLng?: number) => {
     try {
       setLoading(true);
-      let url = `/api/map/csv-data?fileName=${fileName}`;
+        let url = `/api/map/csv-data?fileName=${fileName}`;
       
       // Add location parameters if provided
       if (centerLat && centerLng) {
@@ -288,8 +287,8 @@ export default function MissouriMap({ fileName }: MissouriMapProps) {
       createMarkers(map, filteredLocations, false);
     }
     
-    // Add bounds change listener for lazy loading
-    const boundsChangedListener = map.addListener('bounds_changed', () => {
+        // Add bounds change listener for lazy loading
+        map.addListener('bounds_changed', () => {
       // Debounce bounds changes to avoid too many API calls
       if (boundsChangeTimeoutRef.current) {
         clearTimeout(boundsChangeTimeoutRef.current);
@@ -364,16 +363,6 @@ export default function MissouriMap({ fileName }: MissouriMapProps) {
     }
   };
 
-  const getMarkerColor = (siteType: string) => {
-    const category = siteType.toLowerCase();
-    if (category.includes('museum') || category.includes('civic')) {
-      return 'red';
-    } else if (category.includes('library') || category.includes('business')) {
-      return 'blue';
-    } else {
-      return 'green';
-    }
-  };
 
   // Default to St. Louis downtown with closer zoom for better STL area view
   const stLouisDowntown = { lat: 38.6270, lng: -90.1994 };

@@ -1,11 +1,11 @@
 // RootLayout.tsx
 import "./globals.css";
-import { Inter } from "next/font/google";
+// import { Inter } from "next/font/google";
 import Navbar from "./lib/components/navbar";
 import { NextAppDirEmotionCacheProvider } from "tss-react/next/appDir";
 import { Toaster } from "@/components/ui/sonner";
 
-const inter = Inter({ subsets: ["latin"] });
+// const inter = Inter({ subsets: ["latin"] });
 
 import { ReactNode } from "react";
 
