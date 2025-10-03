@@ -85,12 +85,6 @@ jobs:
         NEXT_PUBLIC_DYNAMODB_NOTES_TABLE: missouri-crossroads-notes
         NEXT_PUBLIC_DYNAMODB_ADMIN_LOGS_TABLE: missouri-crossroads-admin-logs
 
-    - name: Upload build artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: build-files
-        path: .next/
-
   # Deployment jobs removed - not deploying to any server currently
   # Add deployment jobs here when ready to deploy to your chosen platform
 
