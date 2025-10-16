@@ -235,7 +235,9 @@ async function parseCSV(csvText: string, centerLat?: string, centerLng?: string,
         if (lat >= 35 && lat <= 41 && lng >= -96 && lng <= -89) {
           latDecimal = lat;
           lngDecimal = lng;
-          if (i <= 3) console.log(`✅ Decimal pair: "${dmmCoords}" → ${lat}, ${lng}`);
+          if (process.env.NODE_ENV === 'development' && i <= 3) {
+            console.log(`✅ Decimal pair: "${dmmCoords}" → ${lat}, ${lng}`);
+          }
         }
       } else {
         // Try DMM/DMS parsing
@@ -244,7 +246,8 @@ async function parseCSV(csvText: string, centerLat?: string, centerLng?: string,
         if (coords) {
           latDecimal = coords.lat;
           lngDecimal = coords.lng;
-          if (i <= 3) { // Log first 3 successful conversions
+          // Debug logging - only in development
+          if (process.env.NODE_ENV === 'development' && i <= 3) {
             console.log(`✅ DMM→Decimal: "${dmmCoords}" → ${latDecimal}, ${lngDecimal}`);
           }
         }
@@ -454,15 +457,18 @@ async function parseCSV(csvText: string, centerLat?: string, centerLng?: string,
     }
   }
   
-  console.log(`🎉 CSV Parsing & Geocoding Summary:`);
-  console.log(`- Total rows processed: ${processedRows}`);
-  console.log(`- Locations with existing coordinates: ${rowsWithCoordinates}`);
-  console.log(`- Locations successfully geocoded: ${geocodedCount}`);
-  console.log(`- Locations failed to geocode: ${failedGeocodingCount}`);
-  console.log(`- Total valid locations with coordinates: ${finalLocations.length}`);
-  console.log(`- Rows with DMM coordinates: ${rowsWithDMMCoords}`);
-  console.log(`- Rows with decimal coordinates: ${rowsWithDecimalCoords}`);
-  console.log(`- Rows without coordinates: ${processedRows - rowsWithDMMCoords - rowsWithDecimalCoords}`);
+  // Log summary only in development
+  if (process.env.NODE_ENV === 'development') {
+    console.log(`🎉 CSV Parsing & Geocoding Summary:`);
+    console.log(`- Total rows processed: ${processedRows}`);
+    console.log(`- Locations with existing coordinates: ${rowsWithCoordinates}`);
+    console.log(`- Locations successfully geocoded: ${geocodedCount}`);
+    console.log(`- Locations failed to geocode: ${failedGeocodingCount}`);
+    console.log(`- Total valid locations with coordinates: ${finalLocations.length}`);
+    console.log(`- Rows with DMM coordinates: ${rowsWithDMMCoords}`);
+    console.log(`- Rows with decimal coordinates: ${rowsWithDecimalCoords}`);
+    console.log(`- Rows without coordinates: ${processedRows - rowsWithDMMCoords - rowsWithDecimalCoords}`);
+  }
   
   return finalLocations;
 }
@@ -492,7 +498,9 @@ export async function GET(request: NextRequest) {
       });
     }
     
-    console.log(`🗺️ Request for ${fileName}${centerLat && centerLng ? ` centered on ${centerLat}, ${centerLng}` : ''}`);
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`🗺️ Request for ${fileName}${centerLat && centerLng ? ` centered on ${centerLat}, ${centerLng}` : ''}`);
+    }
     
     // Try to fetch from S3 first
     try {
@@ -504,9 +512,11 @@ export async function GET(request: NextRequest) {
       const response = await s3Client.send(command);
       const csvText = await response.Body?.transformToString() || '';
       
-      console.log('CSV text length:', csvText.length);
-      console.log('First 500 characters:', csvText.substring(0, 500));
-      console.log('Last 200 characters:', csvText.substring(csvText.length - 200));
+      if (process.env.NODE_ENV === 'development') {
+        console.log('CSV text length:', csvText.length);
+        console.log('First 500 characters:', csvText.substring(0, 500));
+        console.log('Last 200 characters:', csvText.substring(csvText.length - 200));
+      }
       
           let locations;
           try {
@@ -522,7 +532,9 @@ export async function GET(request: NextRequest) {
         throw new Error('No valid locations found in CSV');
       }
 
-      console.log(`Successfully parsed ${locations.length} locations from CSV`);
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`Successfully parsed ${locations.length} locations from CSV`);
+      }
 
       // Cache the results
       cache.set(cacheKey, {

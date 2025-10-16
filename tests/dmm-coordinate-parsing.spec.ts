@@ -25,8 +25,9 @@ test.describe('Coordinate Parsing - API Tests', () => {
     );
     expect(validLocations.length).toBeGreaterThan(0);
     
-    // Note: In CI without AWS credentials, this returns sample data (~15 locations)
-    // In production with real CSV, this returns 700+ locations
+    // Note: In CI without AWS credentials, this returns sample data (~15 locations).
+    // In production with real CSV, this returns 700+ locations.
+    // The assertion below is intentionally loose to accommodate both environments; it only checks for the presence of data.
     expect(data.locations.length).toBeGreaterThan(0);
   });
 
