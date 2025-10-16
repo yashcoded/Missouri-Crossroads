@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
 
+// IMPORTANT: AWS credentials are server-side only and should NEVER use NEXT_PUBLIC_ prefix
 const s3Client = new S3Client({
   region: process.env.NEXT_PUBLIC_AWS_REGION || 'us-east-2',
   credentials: {
-    accessKeyId: process.env.NEXT_PUBLIC_AWS_ACCESS_KEY_ID || '',
-    secretAccessKey: process.env.NEXT_PUBLIC_AWS_SECRET_ACCESS_KEY || '',
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID || '',
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || '',
   },
 });
 
@@ -46,43 +47,83 @@ async function geocodeAddress(address: string): Promise<{ lat: number; lng: numb
   }
 }
 
-// Function to parse DMM (Degrees, Minutes) coordinates to decimal degrees
+// Function to parse DMM (Degrees, Minutes) or DMS coordinates to decimal degrees
 function parseDMMCoordinates(dmmString: string): { lat: number; lng: number } | null {
   try {
-    // Example: "39° 0.924′ N, 94° 31.55′ W"
-    const cleanString = dmmString.replace(/[°′'"]/g, '').trim();
+    if (!dmmString || dmmString.trim() === '') return null;
     
-    // Split by comma and clean up
-    const parts = cleanString.split(',').map(part => part.trim());
-    if (parts.length !== 2) return null;
-
-    const [latPart, lngPart] = parts;
-
-    // Parse latitude (e.g., "39 0.924 N")
-    const latMatch = latPart.match(/(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)\s*([NS])/i);
-    if (!latMatch) return null;
+    const trimmed = dmmString.trim();
     
-    const latDegrees = parseFloat(latMatch[1]);
-    const latMinutes = parseFloat(latMatch[2]);
-    const latDirection = latMatch[3].toUpperCase();
+    // Skip obvious placeholders
+    if (trimmed === 'FILL' || trimmed === 'N/A' || trimmed === 'Unknown' || 
+        trimmed.includes("Can't Find") || trimmed.length < 5) {
+      return null;
+    }
     
-    let latDecimal = latDegrees + (latMinutes / 60);
-    if (latDirection === 'S') latDecimal = -latDecimal;
-
-    // Parse longitude (e.g., "94 31.55 W")
-    const lngMatch = lngPart.match(/(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)\s*([EW])/i);
-    if (!lngMatch) return null;
+    // Check if it's already a decimal coordinate (e.g., "38.62166137212446")
+    // If it's just a number with optional decimal and no direction letters
+    if (/^-?\d+\.\d+$/.test(trimmed.replace(/\s+/g, ''))) {
+      return null; // Let the decimal parser handle it
+    }
     
-    const lngDegrees = parseFloat(lngMatch[1]);
-    const lngMinutes = parseFloat(lngMatch[2]);
-    const lngDirection = lngMatch[3].toUpperCase();
+    // Remove all special characters, keep numbers, dots, spaces, and NSEW
+    const cleanString = dmmString.replace(/[°′'"'`]/g, ' ').replace(/\s+/g, ' ').trim();
     
-    let lngDecimal = lngDegrees + (lngMinutes / 60);
-    if (lngDirection === 'W') lngDecimal = -lngDecimal;
+    // Try to extract lat/lng using patterns
+    // Patterns to match: N/S degrees minutes, E/W degrees minutes
+    // Can be: "N39 11 23.6 W93 52 33.8" or "39 11 23.6 N 93 52 33.8 W"
+    
+    // Match latitude and longitude separately (order doesn't matter)
+    const latPattern = /([NS])\s*(\d+)[° ]?\s+(\d+(?:\.\d+)?)[' ]?(?:\s+(\d+(?:\.\d+)?)[" ]?)?/i;
+    const lngPattern = /([EW])\s*(\d+)[° ]?\s+(\d+(?:\.\d+)?)[' ]?(?:\s+(\d+(?:\.\d+)?)[" ]?)?/i;
+    
+    // Also try reverse pattern: degrees before direction
+    const latPattern2 = /(\d+)[° ]?\s+(\d+(?:\.\d+)?)[' ]?(?:\s+(\d+(?:\.\d+)?)[" ]?)?\s*([NS])/i;
+    const lngPattern2 = /(\d+)[° ]?\s+(\d+(?:\.\d+)?)[' ]?(?:\s+(\d+(?:\.\d+)?)[" ]?)?\s*([EW])/i;
+    
+    let latMatch = cleanString.match(latPattern) || cleanString.match(latPattern2);
+    let lngMatch = cleanString.match(lngPattern) || cleanString.match(lngPattern2);
+    
+    if (!latMatch || !lngMatch) {
+      return null;
+    }
+    
+    // Extract latitude components
+    let latDirection, latDegrees, latMinutes, latSeconds;
+    if (latMatch[1] && /[NS]/i.test(latMatch[1])) {
+      // Direction first: N39 11 23.6
+      [, latDirection, latDegrees, latMinutes, latSeconds] = latMatch;
+    } else {
+      // Direction last: 39 11 23.6 N
+      [, latDegrees, latMinutes, latSeconds, latDirection] = latMatch;
+    }
+    
+    // Extract longitude components  
+    let lngDirection, lngDegrees, lngMinutes, lngSeconds;
+    if (lngMatch[1] && /[EW]/i.test(lngMatch[1])) {
+      // Direction first: W93 52 33.8
+      [, lngDirection, lngDegrees, lngMinutes, lngSeconds] = lngMatch;
+    } else {
+      // Direction last: 93 52 33.8 W
+      [, lngDegrees, lngMinutes, lngSeconds, lngDirection] = lngMatch;
+    }
+    
+    // Convert to decimal
+    let latDecimal = parseFloat(latDegrees) + parseFloat(latMinutes) / 60;
+    if (latSeconds) latDecimal += parseFloat(latSeconds) / 3600;
+    if (latDirection.toUpperCase() === 'S') latDecimal = -latDecimal;
+    
+    let lngDecimal = parseFloat(lngDegrees) + parseFloat(lngMinutes) / 60;
+    if (lngSeconds) lngDecimal += parseFloat(lngSeconds) / 3600;
+    if (lngDirection.toUpperCase() === 'W') lngDecimal = -lngDecimal;
+    
+    // Validate Missouri coordinates (roughly)
+    if (latDecimal < 35 || latDecimal > 41 || lngDecimal > -89 || lngDecimal < -96) {
+      return null; // Outside Missouri, probably bad parse
+    }
 
     return { lat: latDecimal, lng: lngDecimal };
   } catch (error) {
-    console.log('Error parsing DMM coordinates:', dmmString, error);
     return null;
   }
 }
@@ -165,27 +206,54 @@ async function parseCSV(csvText: string, centerLat?: string, centerLng?: string,
 
     // Check for DMM coordinates and convert to decimal degrees
     const dmmCoords = location['GeoCoordinates (DMM)'] || location['GeoCoordinates (DD)'];
-    let latDecimal = null;
-    let lngDecimal = null;
+    let latDecimal: number | null = null;
+    let lngDecimal: number | null = null;
 
-    // Track coordinate statistics
-    if (latValue || lngValue) {
-      rowsWithDecimalCoords++;
+    // First, try to parse decimal coordinates from dedicated lat/lng columns
+    if (latValue && latValue.trim() && !isNaN(parseFloat(latValue))) {
+      const parsed = parseFloat(latValue);
+      if (parsed >= 35 && parsed <= 41) { // Valid Missouri latitude range
+        latDecimal = parsed;
+        rowsWithDecimalCoords++;
+      }
+    }
+    if (lngValue && lngValue.trim() && !isNaN(parseFloat(lngValue))) {
+      const parsed = parseFloat(lngValue);
+      if (parsed >= -96 && parsed <= -89) { // Valid Missouri longitude range
+        lngDecimal = parsed;
+      }
     }
     
-    if (dmmCoords && dmmCoords.trim()) {
-      rowsWithDMMCoords++;
-      const coords = parseDMMCoordinates(dmmCoords);
-      if (coords) {
-        latDecimal = coords.lat;
-        lngDecimal = coords.lng;
+    // If no valid decimal coordinates, try parsing the DMM/DMS field
+    if ((latDecimal === null || lngDecimal === null) && dmmCoords && dmmCoords.trim()) {
+      // Check if dmmCoords is actually a decimal coordinate pair
+      const decimalPairMatch = dmmCoords.match(/^(-?\d+\.\d+)\s*[,\s]\s*(-?\d+\.\d+)/);
+      if (decimalPairMatch) {
+        // It's already decimal coordinates like "38.123, -90.456"
+        const lat = parseFloat(decimalPairMatch[1]);
+        const lng = parseFloat(decimalPairMatch[2]);
+        if (lat >= 35 && lat <= 41 && lng >= -96 && lng <= -89) {
+          latDecimal = lat;
+          lngDecimal = lng;
+          if (i <= 3) console.log(`✅ Decimal pair: "${dmmCoords}" → ${lat}, ${lng}`);
+        }
+      } else {
+        // Try DMM/DMS parsing
+        rowsWithDMMCoords++;
+        const coords = parseDMMCoordinates(dmmCoords);
+        if (coords) {
+          latDecimal = coords.lat;
+          lngDecimal = coords.lng;
+          if (i <= 3) { // Log first 3 successful conversions
+            console.log(`✅ DMM→Decimal: "${dmmCoords}" → ${latDecimal}, ${lngDecimal}`);
+          }
+        }
       }
     }
 
-
-    // Determine final coordinates (prefer decimal degrees, fallback to DMM parsed)
-    const finalLat = (latValue && !isNaN(parseFloat(latValue))) ? parseFloat(latValue) : latDecimal;
-    const finalLng = (lngValue && !isNaN(parseFloat(lngValue))) ? parseFloat(lngValue) : lngDecimal;
+    // Final coordinates are whatever we successfully parsed
+    const finalLat = latDecimal;
+    const finalLng = lngDecimal;
 
     // Get address components for geocoding
     const address = location['address OR postalAddress (streetAddress OR postOfficeBoxNumber)'] || '';

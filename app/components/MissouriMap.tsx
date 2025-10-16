@@ -149,11 +149,17 @@ export default function MissouriMap({ fileName }: MissouriMapProps) {
     const category = location.siteTypeCategory.toLowerCase();
     let categoryMatch = false;
     
-    if (category.includes('museum') || category.includes('civic') || category.includes('historic marker')) {
+    // Red = Historic Markers only
+    if (category.includes('historic marker')) {
       categoryMatch = showMuseums;
-    } else if (category.includes('library') || category.includes('business') || category.includes('educational')) {
+    } 
+    // Blue = Interpretive/Educational content
+    else if (category.includes('interpretive') || category.includes('interpetive') || 
+             category.includes('library') || category.includes('educational')) {
       categoryMatch = showLibraries;
-    } else {
+    } 
+    // Green = Monuments and everything else
+    else {
       categoryMatch = showOthers;
     }
     
@@ -179,14 +185,37 @@ export default function MissouriMap({ fileName }: MissouriMapProps) {
     return true;
   });
 
-  // Debug logging for filtering
+  // Debug logging for filtering - only log once when locations change
   useEffect(() => {
+    if (locations.length === 0) return;
+    
     console.log(`🔍 Filtering results: ${filteredLocations.length} locations`);
     console.log(`📊 Filters: Museums=${showMuseums}, Libraries=${showLibraries}, Others=${showOthers}`);
-    if (searchQuery) {
-      console.log(`🔍 Search: "${searchQuery}"`);
-    }
-  }, [filteredLocations.length, showMuseums, showLibraries, showOthers, searchQuery]);
+    
+    // Log all unique categories to help debug (only once)
+    const uniqueCategories = new Set(locations.map(loc => loc.siteTypeCategory));
+    console.log(`📋 Unique categories in data:`, Array.from(uniqueCategories));
+    
+    // Count by category filter type
+    const museumCount = locations.filter(loc => {
+      const cat = loc.siteTypeCategory.toLowerCase();
+      return cat.includes('historic marker');
+    }).length;
+    const libraryCount = locations.filter(loc => {
+      const cat = loc.siteTypeCategory.toLowerCase();
+      return cat.includes('interpretive') || cat.includes('interpetive') || 
+             cat.includes('library') || cat.includes('educational');
+    }).length;
+    const otherCount = locations.filter(loc => {
+      const cat = loc.siteTypeCategory.toLowerCase();
+      return !cat.includes('historic marker') &&
+             !cat.includes('interpretive') && !cat.includes('interpetive') &&
+             !cat.includes('library') && !cat.includes('educational');
+    }).length;
+    
+    console.log(`📊 Category counts: Museums=${museumCount}, Libraries=${libraryCount}, Others=${otherCount}`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [locations.length]); // Only re-run when locations count changes
 
   const fetchCSVData = useCallback(async (centerLat?: number, centerLng?: number) => {
     try {
@@ -239,7 +268,8 @@ export default function MissouriMap({ fileName }: MissouriMapProps) {
       // Only load if bounds are significantly different and larger than current
       if (loadedBounds) {
         const currentArea = (loadedBounds.ne.lat - loadedBounds.sw.lat) * (loadedBounds.ne.lng - loadedBounds.sw.lng);
-        if (area < currentArea * 1.2) {
+        // Load if area is 5% larger (was 20% before - too conservative)
+        if (area < currentArea * 1.05) {
           // New bounds are not significantly larger, skip loading
           setLoadingViewport(false);
           return;
@@ -354,11 +384,17 @@ export default function MissouriMap({ fileName }: MissouriMapProps) {
 
   const getMarkerIcon = (siteType: string) => {
     const category = siteType.toLowerCase();
-    if (category.includes('museum') || category.includes('civic') || category.includes('monument') || category.includes('historic marker')) {
+    // Red = Historic Markers
+    if (category.includes('historic marker')) {
       return 'https://maps.google.com/mapfiles/ms/icons/red-dot.png';
-    } else if (category.includes('library') || category.includes('business') || category.includes('educational')) {
+    } 
+    // Blue = Interpretive/Educational
+    else if (category.includes('interpretive') || category.includes('interpetive') || 
+             category.includes('library') || category.includes('educational')) {
       return 'https://maps.google.com/mapfiles/ms/icons/blue-dot.png';
-    } else {
+    } 
+    // Green = Monuments and others
+    else {
       return 'https://maps.google.com/mapfiles/ms/icons/green-dot.png';
     }
   };
@@ -642,25 +678,10 @@ export default function MissouriMap({ fileName }: MissouriMapProps) {
           <div className="text-lg">
             <span className="font-bold text-green-800">📍 Showing</span>
             <span className="font-bold text-green-600 text-xl mx-2">{filteredLocations.length}</span>
-            <span className="text-green-700 font-semibold">visible pins</span>
+            <span className="text-green-700 font-semibold">location{filteredLocations.length !== 1 ? 's' : ''}</span>
             <div className="text-sm text-blue-600 mt-2">
-              {userLocation ? (
-                <>
-                  {(() => {
-                    const distanceFromSTL = Math.sqrt(
-                      Math.pow(userLocation.lat - 38.6270, 2) + 
-                      Math.pow(userLocation.lng - (-90.1994), 2)
-                    ) * 69;
-                    return distanceFromSTL <= 30 ? (
-                      <>within <span className="font-bold">30 miles of St. Louis downtown</span></>
-                    ) : (
-                      <>near your location in Missouri</>
-                    );
-                  })()}
-                </>
-              ) : (
-                <>near <span className="font-bold">St. Louis area</span></>
-              )}
+              out of <span className="font-bold">{locations.length}</span> total locations in Missouri
+              {loadingViewport && <span className="ml-2 text-green-600">• Loading more...</span>}
             </div>
           </div>
         )}

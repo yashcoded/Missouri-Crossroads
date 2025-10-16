@@ -41,25 +41,21 @@ A Next.js application that displays an interactive map of Missouri's historical 
    
    Fill in your environment variables:
    ```bash
-   # AWS Configuration
+   # AWS Configuration (Public - Safe for client-side)
    NEXT_PUBLIC_AWS_REGION=us-east-2
-   NEXT_PUBLIC_AWS_ACCESS_KEY_ID=your_access_key
-   NEXT_PUBLIC_AWS_SECRET_ACCESS_KEY=your_secret_key
-   
-   # AWS S3
-   NEXT_PUBLIC_S3_BUCKET_NAME=mr-crossroads-bucket
-   
-   # AWS Cognito
    NEXT_PUBLIC_COGNITO_USER_POOL_ID=your_user_pool_id
    NEXT_PUBLIC_COGNITO_CLIENT_ID=your_client_id
-   COGNITO_CLIENT_SECRET=your_client_secret
-   
-   # DynamoDB Tables
    NEXT_PUBLIC_DYNAMODB_USERS_TABLE=missouri-crossroads-users
    NEXT_PUBLIC_DYNAMODB_NOTES_TABLE=missouri-crossroads-notes
    NEXT_PUBLIC_DYNAMODB_ADMIN_LOGS_TABLE=missouri-crossroads-admin-logs
    
-   # Google Maps API
+   # AWS Secrets (Server-side ONLY - NEVER use NEXT_PUBLIC_ prefix!)
+   AWS_ACCESS_KEY_ID=your_access_key
+   AWS_SECRET_ACCESS_KEY=your_secret_key
+   S3_BUCKET_NAME=mr-crossroads-bucket
+   COGNITO_CLIENT_SECRET=your_client_secret
+   
+   # Google Maps API (Public - These keys are restricted by domain)
    NEXT_PUBLIC_MAP_KEY=your_google_maps_api_key
    NEXT_PUBLIC_PLACES_KEY=your_google_places_api_key
    ```

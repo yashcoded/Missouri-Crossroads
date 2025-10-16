@@ -72,18 +72,21 @@ jobs:
     - name: Build application
       run: pnpm build
       env:
+        # Public-facing API keys (safe to expose to client-side)
         NEXT_PUBLIC_MAP_KEY: ${{ secrets.NEXT_PUBLIC_MAP_KEY }}
         NEXT_PUBLIC_PLACES_KEY: ${{ secrets.NEXT_PUBLIC_PLACES_KEY }}
         NEXT_PUBLIC_AWS_REGION: us-east-2
-        NEXT_PUBLIC_AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        NEXT_PUBLIC_AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        NEXT_PUBLIC_S3_BUCKET_NAME: ${{ secrets.S3_BUCKET_NAME }}
         NEXT_PUBLIC_COGNITO_USER_POOL_ID: ${{ secrets.COGNITO_USER_POOL_ID }}
         NEXT_PUBLIC_COGNITO_CLIENT_ID: ${{ secrets.COGNITO_CLIENT_ID }}
-        COGNITO_CLIENT_SECRET: ${{ secrets.COGNITO_CLIENT_SECRET }}
         NEXT_PUBLIC_DYNAMODB_USERS_TABLE: missouri-crossroads-users
         NEXT_PUBLIC_DYNAMODB_NOTES_TABLE: missouri-crossroads-notes
         NEXT_PUBLIC_DYNAMODB_ADMIN_LOGS_TABLE: missouri-crossroads-admin-logs
+        # Server-side only secrets (NEVER use NEXT_PUBLIC_ prefix for these)
+        # Add these to GitHub Secrets:
+        # - AWS_ACCESS_KEY_ID
+        # - AWS_SECRET_ACCESS_KEY  
+        # - S3_BUCKET_NAME
+        # - COGNITO_CLIENT_SECRET
 
   # Deployment jobs removed - not deploying to any server currently
   # Add deployment jobs here when ready to deploy to your chosen platform
