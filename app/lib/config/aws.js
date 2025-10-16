@@ -4,10 +4,9 @@ import { CognitoIdentityProviderClient } from '@aws-sdk/client-cognito-identity-
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
 
-// AWS Configuration
-// IMPORTANT: These are server-side only credentials and should NEVER use NEXT_PUBLIC_ prefix
+
 const awsConfig = {
-  region: process.env.NEXT_PUBLIC_AWS_REGION || 'us-east-1',
+  region: process.env.NEXT_PUBLIC_AWS_REGION || 'us-east-2',
   credentials: {
     accessKeyId: process.env.AWS_ACCESS_KEY_ID,
     secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
@@ -27,7 +26,7 @@ const dynamoDB = DynamoDBDocumentClient.from(dynamoDBClient);
 const cognitoConfig = {
   UserPoolId: process.env.NEXT_PUBLIC_COGNITO_USER_POOL_ID,
   ClientId: process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID,
-  region: process.env.NEXT_PUBLIC_AWS_REGION || 'us-east-1',
+  region: process.env.NEXT_PUBLIC_AWS_REGION || 'us-east-2',
 };
 
 export { s3Client, lambdaClient, cognitoClient, dynamoDB, awsConfig, cognitoConfig }; 

@@ -1,117 +1,207 @@
-# AWS Integration Tests
+# Playwright Test Suite
 
-This directory contains comprehensive Playwright tests for the AWS integration setup.
+This directory contains end-to-end tests for the Missouri Crossroads application.
 
-## Test Coverage
+## Test Files
 
-### 🔐 Authentication Flow
-- User registration with Cognito
-- User sign-in
-- Form validation
+### Core Functionality Tests
 
-### 📝 Note Creation
-- Note form display
-- Note creation with text
-- File uploads (images, audio)
-- Form validation
+#### `map-functionality.spec.ts` - Map Features (NEW)
+Tests for the enhanced map functionality including:
+- ✅ Map loading and initialization
+- ✅ Pin visibility and rendering (91+ locations → 700+ locations)
+- ✅ Category filtering (Historic Markers, Educational/Interpretive, Monuments)
+- ✅ Dynamic pin loading on zoom
+- ✅ Search functionality
+- ✅ InfoWindow interactions
+- ✅ Responsive design (mobile, tablet, desktop)
 
-### 👀 Notes Viewer
-- Display existing notes
-- Refresh functionality
-- Note details display
+**Key Test Cases:**
+- Verifies > 91 pins are displayed (tests DMM parsing fix)
+- Tests all three category filters work independently
+- Validates search filters locations correctly
+- Tests that disabling all filters shows 0 pins
 
-### 📊 CSV Metadata Upload
-- CSV file upload to S3
-- File type validation
-- Public URL generation
-- Upload progress tracking
+---
 
-### 🔌 API Endpoints
-- Notes API (GET, POST)
-- S3 presign API
-- Error handling
+#### `dmm-coordinate-parsing.spec.ts` - Coordinate Parsing (NEW)
+Tests for the enhanced DMM/DMS coordinate parsing:
+- ✅ Standard DMM format: `"39° 0.924′ N, 94° 31.55′ W"`
+- ✅ No comma format: `"N39°11'23.6 W93°52'33.8"`
+- ✅ Reversed order: `"W92°44'34 N38°58'25"`
+- ✅ DMS with seconds: `"N39° 11' 23.6" W93° 52' 33.8"`
+- ✅ Decimal pairs: `"38.123, -90.456"`
+- ✅ Placeholder rejection: `"FILL"`, `"N/A"`, `"Unknown"`
+- ✅ Missouri bounds validation
 
-### 🚨 Error Handling
-- Authentication errors
-- Network errors
-- Graceful degradation
+**Key Improvements Tested:**
+- Verifies > 91 locations parsed (old: 91, new: 700+)
+- Tests coordinate validation (35-41°N, 89-96°W for Missouri)
+- Validates caching performance
 
-### 📱 Responsive Design
-- Mobile compatibility
-- Tablet compatibility
-- Cross-browser testing
+---
+
+#### `security.spec.ts` - Security Validation (NEW)
+Security tests to ensure no credentials are exposed:
+- ✅ AWS credentials NOT in client JavaScript
+- ✅ AWS credentials NOT in page source
+- ✅ AWS credentials NOT in network responses
+- ✅ Server-side API routes for all AWS operations
+- ✅ No XSS vulnerabilities in search
+- ✅ No SQL injection vulnerabilities
+- ✅ API validates fileName parameter (path traversal protection)
+- ✅ Cognito client secret not exposed
+
+**Security Checks:**
+- Pattern matching for AWS keys (AKIA*)
+- Pattern matching for API keys
+- Input validation testing
+- Header security checks
+
+---
+
+#### `admin-csv-upload.spec.ts` - Admin Features (NEW)
+Tests for admin and CSV upload functionality:
+- ✅ CSV upload endpoint validation
+- ✅ File type validation (CSV only)
+- ✅ Required parameter validation
+- ✅ Caching behavior
+- ✅ Viewport-based loading
+- ✅ Different map center locations
+- ✅ Edge case handling (empty fields, malformed data)
+- ✅ S3 presigned URL generation
+- ✅ Data integrity across requests
+
+---
+
+### Legacy Tests
+
+#### `basic.spec.ts`
+Basic page load test for test-aws page
+
+#### `aws-integration*.spec.ts` (Multiple versions)
+AWS integration tests for S3, DynamoDB, and Cognito
+
+---
 
 ## Running Tests
 
-### Prerequisites
-1. Install dependencies: `pnpm install`
-2. Ensure your AWS environment is configured
-3. Make sure your Lambda function has proper S3 permissions
-
-### Test Commands
-
+### Run All Tests
 ```bash
-# Run all tests
-pnpm test
-
-# Run tests with UI
-pnpm test:ui
-
-# Run tests in headed mode (see browser)
-pnpm test:headed
-
-# Run tests in debug mode
-pnpm test:debug
-
-# Run specific test file
-pnpm test aws-integration.spec.ts
-
-# Run tests for specific browser
-pnpm test --project=chromium
+pnpm test:e2e
 ```
 
-### Test Fixtures
+### Run Specific Test File
+```bash
+pnpm test:e2e tests/map-functionality.spec.ts
+pnpm test:e2e tests/security.spec.ts
+pnpm test:e2e tests/dmm-coordinate-parsing.spec.ts
+pnpm test:e2e tests/admin-csv-upload.spec.ts
+```
 
-Place test files in `tests/fixtures/`:
-- `test-image.jpg` - Small test image for upload tests
-- `test-metadata.csv` - Sample CSV for metadata upload tests
+### Run with UI Mode (Interactive)
+```bash
+pnpm test:e2e:ui
+```
+
+### Run in Debug Mode
+```bash
+pnpm test:e2e:debug
+```
+
+### Run in Headed Mode (See Browser)
+```bash
+pnpm test:e2e:headed
+```
+
+### Run Only Chrome
+```bash
+pnpm test:e2e --project=chromium
+```
+
+---
 
 ## Test Configuration
 
-- **Base URL**: `http://localhost:3000`
-- **Timeout**: 10 seconds for assertions
-- **Retries**: 2 retries in CI, 0 in development
-- **Parallel**: Tests run in parallel for speed
-- **Browsers**: Chrome, Firefox, Safari, Mobile Chrome, Mobile Safari
+Tests are configured in `playwright.config.ts`:
+- **Browsers:** Chrome, Firefox, Safari, Mobile Chrome, Mobile Safari
+- **Base URL:** http://localhost:3000
+- **Retries:** 2 in CI, 0 locally
+- **Screenshots:** On failure
+- **Video:** On failure
+- **Trace:** On first retry
+
+---
+
+## What's Being Tested
+
+### ✅ Recent Changes (October 16, 2025)
+1. **DMM Coordinate Parsing Fix**
+   - Before: 91 locations displayed
+   - After: 700+ locations displayed
+   - Tests verify the parsing works for multiple formats
+
+2. **Category Filter Updates**
+   - Historic Markers → Red pins
+   - Interpretive Panels → Blue pins (educational)
+   - Monuments → Green pins
+   - Tests verify correct categorization
+
+3. **Security Improvements**
+   - AWS credentials removed from NEXT_PUBLIC_ prefix
+   - Tests verify no credentials exposed to browser
+
+4. **Dynamic Pin Loading**
+   - Pins load as you zoom out
+   - Tests verify lazy loading works
+
+### 📊 Test Coverage
+
+- **Map Display:** 8 tests
+- **Coordinate Parsing:** 8 tests
+- **Security:** 11 tests
+- **Admin/CSV Upload:** 12 tests
+- **Total New Tests:** 39 tests
+
+---
 
 ## CI/CD Integration
 
-Tests are configured to run in CI environments:
-- Automatic server startup
-- Screenshots on failure
-- Video recording on failure
-- HTML report generation
+Tests run automatically on:
+- Push to `main` or `develop` branches
+- Pull requests to `main`
 
-## Debugging Tests
+See `.github/workflows/ci.yml` for CI configuration.
 
-1. **Use debug mode**: `pnpm test:debug`
-2. **Check screenshots**: `test-results/` directory
-3. **View HTML report**: `playwright-report/` directory
-4. **Check traces**: `test-results/` directory
+---
 
-## Common Issues
+## Test Fixtures
 
-### AWS Permissions
-- Ensure Lambda has S3 access
-- Check bucket CORS configuration
-- Verify IAM role permissions
+Located in `tests/fixtures/`:
+- `test-image.jpg` - Sample image for upload tests
+- `test-metadata.csv` - Sample CSV data for parsing tests
 
-### Test Data
-- Use unique timestamps for test data
-- Clean up test data after tests
-- Avoid conflicts with existing data
+---
 
-### Network Issues
-- Tests include network error handling
-- Offline mode testing included
-- Timeout configurations for slow operations
+## Debugging Failed Tests
+
+1. **Check screenshots:** `test-results/` directory
+2. **Check videos:** `test-results/` directory
+3. **Check trace:** Open with `pnpm dlx playwright show-trace <trace-file>`
+4. **Run in headed mode:** `pnpm test:e2e:headed` to see what's happening
+
+---
+
+## Best Practices
+
+- Tests use `page.waitForLoadState('networkidle')` to ensure page is ready
+- Tests use `page.waitForTimeout()` sparingly, preferring waitFor selectors
+- Tests clean up after themselves
+- Tests are isolated and can run in any order
+- Tests use descriptive names and comments
+
+---
+
+**Last Updated:** October 16, 2025  
+**Total Test Files:** 8  
+**Total Test Cases:** ~50+
