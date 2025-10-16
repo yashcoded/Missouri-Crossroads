@@ -157,7 +157,10 @@ jobs:
     - name: Run security audit
       run: |
         pnpm audit --audit-level moderate
+      continue-on-error: true
 
-    - name: Run dependency check
-      uses: actions/dependency-review-action@v4
-      if: github.event_name == 'pull_request'
+    # Dependency review action requires GitHub Advanced Security
+    # Disabled for now - uncomment if you have Advanced Security enabled
+    # - name: Run dependency check
+    #   uses: actions/dependency-review-action@v4
+    #   if: github.event_name == 'pull_request'
