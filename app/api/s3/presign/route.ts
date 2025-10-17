@@ -6,8 +6,8 @@ const REGION = process.env.NEXT_PUBLIC_AWS_REGION || 'us-east-2';
 const BUCKET = 'mr-crossroads-bucket';
 
 // IMPORTANT: Use server-only credentials. NEVER use NEXT_PUBLIC_ prefix for AWS credentials
-const accessKeyId = process.env.AWS_ACCESS_KEY_ID;
-const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY;
+const accessKeyId = process.env.AWS_ACCESS_KEY_ID || process.env.AMPLIFY_AWS_ACCESS_KEY_ID;
+const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY || process.env.AMPLIFY_AWS_SECRET_ACCESS_KEY;
 
 const s3 = new S3Client({
 	region: REGION,
