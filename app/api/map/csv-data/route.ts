@@ -2,11 +2,23 @@ import { NextRequest, NextResponse } from 'next/server';
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
 
 // IMPORTANT: AWS credentials are server-side only and should NEVER use NEXT_PUBLIC_ prefix
+const accessKeyId = process.env.AWS_ACCESS_KEY_ID || process.env.AMPLIFY_AWS_ACCESS_KEY_ID || '';
+const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY || process.env.AMPLIFY_AWS_SECRET_ACCESS_KEY || '';
+
+// Log credential status (without exposing actual values)
+console.log('AWS Credentials Check:', {
+  hasAccessKeyId: !!accessKeyId,
+  accessKeyIdLength: accessKeyId.length,
+  hasSecretKey: !!secretAccessKey,
+  secretKeyLength: secretAccessKey.length,
+  region: process.env.NEXT_PUBLIC_AWS_REGION || 'us-east-2'
+});
+
 const s3Client = new S3Client({
   region: process.env.NEXT_PUBLIC_AWS_REGION || 'us-east-2',
   credentials: {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID || process.env.AMPLIFY_AWS_ACCESS_KEY_ID || '',
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || process.env.AMPLIFY_AWS_SECRET_ACCESS_KEY || '',
+    accessKeyId,
+    secretAccessKey,
   },
 });
 
@@ -553,7 +565,12 @@ export async function GET(request: NextRequest) {
       });
 
     } catch (s3Error) {
-      console.log('S3 fetch failed, using sample data:', s3Error);
+      console.error('S3 fetch failed, using sample data:', {
+        error: s3Error,
+        errorMessage: s3Error instanceof Error ? s3Error.message : String(s3Error),
+        bucket: BUCKET_NAME,
+        hasCredentials: !!(accessKeyId && secretAccessKey)
+      });
       
       // Enhanced sample data with more Missouri locations
       const sampleLocations = [
