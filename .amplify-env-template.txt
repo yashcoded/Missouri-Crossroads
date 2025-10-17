@@ -1,0 +1,28 @@
+# AWS Amplify Environment Variables Configuration
+# Copy these into Amplify Console → App Settings → Environment variables
+
+# ===== PUBLIC VARIABLES (PlainText) =====
+NEXT_PUBLIC_AWS_REGION=us-east-2
+NEXT_PUBLIC_COGNITO_USER_POOL_ID=REPLACE_WITH_YOUR_COGNITO_POOL_ID
+NEXT_PUBLIC_COGNITO_CLIENT_ID=REPLACE_WITH_YOUR_COGNITO_CLIENT_ID
+NEXT_PUBLIC_DYNAMODB_USERS_TABLE=missouri-crossroads-users
+NEXT_PUBLIC_DYNAMODB_NOTES_TABLE=missouri-crossroads-notes
+NEXT_PUBLIC_DYNAMODB_ADMIN_LOGS_TABLE=missouri-crossroads-admin-logs
+
+# ===== SECRET VARIABLES (Secret type - check "Secret" box!) =====
+AWS_ACCESS_KEY_ID=REPLACE_WITH_YOUR_ACCESS_KEY
+AWS_SECRET_ACCESS_KEY=REPLACE_WITH_YOUR_SECRET_KEY
+S3_BUCKET_NAME=mr-crossroads-bucket
+COGNITO_CLIENT_SECRET=REPLACE_WITH_YOUR_CLIENT_SECRET
+NEXT_PUBLIC_MAP_KEY=REPLACE_WITH_YOUR_GOOGLE_MAPS_KEY
+NEXT_PUBLIC_PLACES_KEY=REPLACE_WITH_YOUR_GOOGLE_PLACES_KEY
+
+# ===== INSTRUCTIONS =====
+# 1. Go to AWS Amplify Console
+# 2. Select your app
+# 3. Go to "App settings" → "Environment variables"
+# 4. Click "Manage variables"
+# 5. Add each variable above
+# 6. For SECRET variables, click the "Secret" checkbox
+# 7. Click "Save"
+
