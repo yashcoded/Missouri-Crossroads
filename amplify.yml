@@ -3,17 +3,10 @@ frontend:
   phases:
     preBuild:
       commands:
-        - echo "Installing pnpm..."
         - npm install -g pnpm@10
-        - echo "Installing dependencies..."
         - pnpm install --frozen-lockfile
     build:
       commands:
-        - echo "Building Next.js application..."
-        - echo "Node version:"
-        - node --version
-        - echo "pnpm version:"
-        - pnpm --version
         - pnpm build
   artifacts:
     baseDirectory: .next
@@ -24,4 +17,9 @@ frontend:
       - node_modules/**/*
       - .next/cache/**/*
       - .pnpm-store/**/*
+  # Enable Next.js SSR
+  buildSpec:
+    runtime:
+      nodejs:
+        version: 20
 
