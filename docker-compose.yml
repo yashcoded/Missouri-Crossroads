@@ -1,0 +1,51 @@
+version: '3.8'
+
+services:
+  missouri-crossroads:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        # Public build-time variables (embedded in bundle)
+        NEXT_PUBLIC_AWS_REGION: ${NEXT_PUBLIC_AWS_REGION}
+        NEXT_PUBLIC_COGNITO_USER_POOL_ID: ${NEXT_PUBLIC_COGNITO_USER_POOL_ID}
+        NEXT_PUBLIC_COGNITO_CLIENT_ID: ${NEXT_PUBLIC_COGNITO_CLIENT_ID}
+        NEXT_PUBLIC_DYNAMODB_USERS_TABLE: ${NEXT_PUBLIC_DYNAMODB_USERS_TABLE}
+        NEXT_PUBLIC_DYNAMODB_NOTES_TABLE: ${NEXT_PUBLIC_DYNAMODB_NOTES_TABLE}
+        NEXT_PUBLIC_DYNAMODB_ADMIN_LOGS_TABLE: ${NEXT_PUBLIC_DYNAMODB_ADMIN_LOGS_TABLE}
+        NEXT_PUBLIC_MAP_KEY: ${NEXT_PUBLIC_MAP_KEY}
+        NEXT_PUBLIC_PLACES_KEY: ${NEXT_PUBLIC_PLACES_KEY}
+    image: missouri-crossroads:latest
+    container_name: missouri-crossroads-app
+    ports:
+      - "3000:3000"
+    environment:
+      # Server-side runtime variables (NOT in image, loaded at runtime)
+      - NODE_ENV=production
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - S3_BUCKET_NAME=${S3_BUCKET_NAME}
+      - COGNITO_CLIENT_SECRET=${COGNITO_CLIENT_SECRET}
+      # Public variables (also needed at runtime for API routes)
+      - NEXT_PUBLIC_AWS_REGION=${NEXT_PUBLIC_AWS_REGION}
+      - NEXT_PUBLIC_COGNITO_USER_POOL_ID=${NEXT_PUBLIC_COGNITO_USER_POOL_ID}
+      - NEXT_PUBLIC_COGNITO_CLIENT_ID=${NEXT_PUBLIC_COGNITO_CLIENT_ID}
+      - NEXT_PUBLIC_DYNAMODB_USERS_TABLE=${NEXT_PUBLIC_DYNAMODB_USERS_TABLE}
+      - NEXT_PUBLIC_DYNAMODB_NOTES_TABLE=${NEXT_PUBLIC_DYNAMODB_NOTES_TABLE}
+      - NEXT_PUBLIC_DYNAMODB_ADMIN_LOGS_TABLE=${NEXT_PUBLIC_DYNAMODB_ADMIN_LOGS_TABLE}
+    env_file:
+      - .env.local  # Load from .env.local file
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - missouri-network
+
+networks:
+  missouri-network:
+    driver: bridge
+

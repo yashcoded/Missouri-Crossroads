@@ -5,6 +5,20 @@ frontend:
       commands:
         - npm install -g pnpm@10
         - pnpm install --frozen-lockfile
+        - echo "Checking required environment variables..."
+        - echo "NEXT_PUBLIC_MAP_KEY length:" ${#NEXT_PUBLIC_MAP_KEY}
+        - echo "NEXT_PUBLIC_PLACES_KEY length:" ${#NEXT_PUBLIC_PLACES_KEY}
+        - |
+          if [ -z "$NEXT_PUBLIC_MAP_KEY" ]; then
+            echo "❌ ERROR: NEXT_PUBLIC_MAP_KEY not set!"
+            exit 1
+          fi
+        - |
+          if [ -z "$NEXT_PUBLIC_PLACES_KEY" ]; then
+            echo "❌ ERROR: NEXT_PUBLIC_PLACES_KEY not set!"
+            exit 1
+          fi
+        - echo "✅ Environment variables verified"
     build:
       commands:
         - pnpm build
