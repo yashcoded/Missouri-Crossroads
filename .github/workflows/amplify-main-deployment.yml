@@ -87,14 +87,18 @@ jobs:
           
           if [ -z "$EXISTING" ]; then
             echo "Creating deployment for main branch"
-            DEPLOYMENT_ID=$(gh api repos/${{ github.repository }}/deployments \
+            # Create JSON payload with proper types
+            JSON_PAYLOAD=$(jq -n \
+              --arg ref "${{ github.sha }}" \
+              --arg env "$ENVIRONMENT" \
+              --arg desc "Deployed to AWS Amplify" \
+              --arg url "${{ steps.amplify-url.outputs.deployment_url }}" \
+              '{ref: $ref, environment: $env, auto_merge: false, required_contexts: [], description: $desc, payload: {url: $url}}')
+            
+            DEPLOYMENT_ID=$(echo "$JSON_PAYLOAD" | gh api repos/${{ github.repository }}/deployments \
               -X POST \
-              -f ref="${{ github.sha }}" \
-              -f environment="$ENVIRONMENT" \
-              -f auto_merge=false \
-              -f required_contexts='[]' \
-              -f description="Deployed to AWS Amplify" \
-              -f payload="{\"url\":\"${{ steps.amplify-url.outputs.deployment_url }}\"}" \
+              -H "Accept: application/vnd.github+json" \
+              --input - \
               --jq '.id')
             
             echo "✅ Created deployment: $DEPLOYMENT_ID"

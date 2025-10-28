@@ -69,16 +69,20 @@ jobs:
             | head -1)
           
           if [ -z "$EXISTING_DEPLOY" ]; then
-            # Create new deployment
+            # Create new deployment with proper JSON types
             echo "Creating deployment for PR ${{ steps.pr-info.outputs.pr_number }}"
-            DEPLOYMENT_ID=$(gh api repos/${{ github.repository }}/deployments \
+            JSON_PAYLOAD=$(jq -n \
+              --arg ref "${{ steps.pr-info.outputs.pr_sha }}" \
+              --arg env "$ENVIRONMENT" \
+              --arg desc "Preview deployment for PR #${{ steps.pr-info.outputs.pr_number }}" \
+              --arg url "$DEPLOYMENT_URL" \
+              --arg pr_num "${{ steps.pr-info.outputs.pr_number }}" \
+              '{ref: $ref, environment: $env, auto_merge: false, required_contexts: [], description: $desc, payload: {url: $url, pr_number: $pr_num}}')
+            
+            DEPLOYMENT_ID=$(echo "$JSON_PAYLOAD" | gh api repos/${{ github.repository }}/deployments \
               -X POST \
-              -f ref="${{ steps.pr-info.outputs.pr_sha }}" \
-              -f environment="$ENVIRONMENT" \
-              -f auto_merge=false \
-              -f required_contexts='[]' \
-              -f description="Preview deployment for PR #${{ steps.pr-info.outputs.pr_number }}" \
-              -f payload="{\"url\":\"$DEPLOYMENT_URL\",\"pr_number\":\"${{ steps.pr-info.outputs.pr_number }}\"}" \
+              -H "Accept: application/vnd.github+json" \
+              --input - \
               --jq '.id')
             
             echo "deployment_id=$DEPLOYMENT_ID" >> $GITHUB_OUTPUT
@@ -217,15 +221,19 @@ jobs:
             --jq ".[] | select(.environment == \"$ENVIRONMENT\") | .id" 2>/dev/null | head -1)
           
           if [ -z "$EXISTING" ]; then
-            # Create new deployment
-            DEPLOYMENT_ID=$(gh api repos/${{ github.repository }}/deployments \
+            # Create new deployment with proper JSON types
+            JSON_PAYLOAD=$(jq -n \
+              --arg ref "${{ steps.pr-info.outputs.pr_sha }}" \
+              --arg env "$ENVIRONMENT" \
+              --arg desc "Preview deployment for PR #${{ steps.pr-info.outputs.pr_number }}" \
+              --arg url "$AMPLIFY_URL" \
+              --arg pr_num "${{ steps.pr-info.outputs.pr_number }}" \
+              '{ref: $ref, environment: $env, auto_merge: false, required_contexts: [], description: $desc, payload: {url: $url, pr_number: $pr_num}}')
+            
+            DEPLOYMENT_ID=$(echo "$JSON_PAYLOAD" | gh api repos/${{ github.repository }}/deployments \
               -X POST \
-              -f ref="${{ steps.pr-info.outputs.pr_sha }}" \
-              -f environment="$ENVIRONMENT" \
-              -f auto_merge=false \
-              -f required_contexts='[]' \
-              -f description="Preview deployment for PR #${{ steps.pr-info.outputs.pr_number }}" \
-              -f payload="{\"url\":\"$AMPLIFY_URL\",\"pr_number\":\"${{ steps.pr-info.outputs.pr_number }}\"}" \
+              -H "Accept: application/vnd.github+json" \
+              --input - \
               --jq '.id' 2>/dev/null || echo "")
             
             if [ -n "$DEPLOYMENT_ID" ]; then
