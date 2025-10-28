@@ -1,5 +1,4 @@
-import { expect } from "@playwright/test"
-import { describe, test } from "@jest/globals"
+import { expect, describe, test } from "@jest/globals"
 
 describe('Basic Tests', () => {
   test('should pass basic math', () => {
