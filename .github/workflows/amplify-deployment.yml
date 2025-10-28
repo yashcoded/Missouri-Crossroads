@@ -1,0 +1,110 @@
+name: Trigger Amplify Deployment on GitHub
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR Number to deploy'
+        required: false
+
+jobs:
+  create-deployment:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Get PR information
+        id: pr-info
+        run: |
+          if [ -n "${{ github.event.inputs.pr_number }}" ]; then
+            PR_NUMBER="${{ github.event.inputs.pr_number }}"
+            PR_INFO=$(gh pr view $PR_NUMBER --json number,headRefOid,title,url)
+            PR_SHA=$(echo "$PR_INFO" | jq -r '.headRefOid')
+          else
+            # Get the most recent PR for this repo
+            PR_INFO=$(gh pr list --state open --limit 1 --json number,headRefOid,title,url)
+            PR_NUMBER=$(echo "$PR_INFO" | jq -r '.[0].number')
+            PR_SHA=$(echo "$PR_INFO" | jq -r '.[0].headRefOid')
+          fi
+          
+          echo "pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
+          echo "pr_sha=$PR_SHA" >> $GITHUB_OUTPUT
+          echo "PR Number: $PR_NUMBER"
+          echo "PR SHA: $PR_SHA"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Get Amplify deployment status
+        id: amplify-status
+        run: |
+          STATUSES=$(gh api repos/${{ github.repository }}/commits/${{ steps.pr-info.outputs.pr_sha }}/statuses)
+          
+          # Find Amplify status
+          AMPLIFY_STATUS=$(echo "$STATUSES" | jq -r '[.[] | select(.context | ascii_downcase | contains("amplify"))][0]')
+          
+          if [ "$AMPLIFY_STATUS" != "null" ] && [ -n "$AMPLIFY_STATUS" ]; then
+            DEPLOYMENT_URL=$(echo "$AMPLIFY_STATUS" | jq -r '.target_url // empty')
+            STATE=$(echo "$AMPLIFY_STATUS" | jq -r '.state')
+            
+            echo "deployment_url=$DEPLOYMENT_URL" >> $GITHUB_OUTPUT
+            echo "state=$STATE" >> $GITHUB_OUTPUT
+            echo "✅ Found Amplify deployment: $STATE"
+            echo "URL: $DEPLOYMENT_URL"
+          else
+            echo "⚠️ No Amplify deployment found for this commit"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Create GitHub deployment
+        if: steps.amplify-status.outputs.deployment_url != ''
+        run: |
+          ENVIRONMENT="pr-${{ steps.pr-info.outputs.pr_number }}"
+          
+          # Check if deployment already exists
+          EXISTING=$(gh api repos/${{ github.repository }}/deployments \
+            --jq ".[] | select(.environment == \"$ENVIRONMENT\") | .id" \
+            | head -1)
+          
+          if [ -z "$EXISTING" ]; then
+            echo "Creating new deployment"
+            DEPLOYMENT_ID=$(gh api repos/${{ github.repository }}/deployments \
+              -X POST \
+              -f ref="${{ steps.pr-info.outputs.pr_sha }}" \
+              -f environment="$ENVIRONMENT" \
+              -f auto_merge=false \
+              -f required_contexts='[]' \
+              -f description="PR #${{ steps.pr-info.outputs.pr_number }} - Preview deployment" \
+              -f payload="{\"url\":\"${{ steps.amplify-status.outputs.deployment_url }}\",\"pr_number\":\"${{ steps.pr-info.outputs.pr_number }}\"}" \
+              --jq '.id')
+            
+            echo "✅ Created deployment: $DEPLOYMENT_ID"
+            
+            # Update deployment status
+            DEPLOY_STATE=$(if [ "${{ steps.amplify-status.outputs.state }}" == "success" ]; then echo "success"; else echo "in_progress"; fi)
+            
+            gh api repos/${{ github.repository }}/deployments/$DEPLOYMENT_ID/statuses \
+              -X POST \
+              -f state="$DEPLOY_STATE" \
+              -f description="Preview deployment on AWS Amplify" \
+              -f environment_url="${{ steps.amplify-status.outputs.deployment_url }}"
+          else
+            echo "Deployment already exists: $EXISTING"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Output deployment info
+        run: |
+          echo "## Deployment Information" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **PR Number:** #${{ steps.pr-info.outputs.pr_number }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Environment:** pr-${{ steps.pr-info.outputs.pr_number }}" >> $GITHUB_STEP_SUMMARY
+          
+          if [ -n "${{ steps.amplify-status.outputs.deployment_url }}" ]; then
+            echo "- **Deployment URL:** ${{ steps.amplify-status.outputs.deployment_url }}" >> $GITHUB_STEP_SUMMARY
+          fi

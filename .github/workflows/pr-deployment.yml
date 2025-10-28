@@ -1,0 +1,219 @@
+name: PR Deployment Status
+
+on:
+  status:
+    # Triggers when commit status changes (including Amplify deployments)
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+
+jobs:
+  sync-deployment-on-status:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'status'
+    
+    steps:
+      - name: Check if Amplify status
+        id: check-status
+        run: |
+          CONTEXT="${{ github.event.context }}"
+          STATE="${{ github.event.state }}"
+          
+          # Check if this is an Amplify-related status
+          if [[ "$CONTEXT" =~ [Aa]mplify ]]; then
+            echo "is_amplify=true" >> $GITHUB_OUTPUT
+            echo "context=$CONTEXT" >> $GITHUB_OUTPUT
+            echo "state=$STATE" >> $GITHUB_OUTPUT
+            echo "target_url=${{ github.event.target_url }}" >> $GITHUB_OUTPUT
+          else
+            echo "is_amplify=false" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Get PR info for commit
+        if: steps.check-status.outputs.is_amplify == 'true'
+        id: pr-info
+        run: |
+          # Find the PR associated with this commit
+          PR_INFO=$(gh api repos/${{ github.repository }}/commits/${{ github.event.sha }}/pulls \
+            -X GET \
+            --jq '.[] | select(.state == "open") | {number: .number, sha: .head.sha}' \
+            | head -n 1)
+          
+          if [ -n "$PR_INFO" ]; then
+            PR_NUMBER=$(echo "$PR_INFO" | jq -r '.number')
+            PR_SHA=$(echo "$PR_INFO" | jq -r '.sha')
+            echo "pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
+            echo "pr_sha=$PR_SHA" >> $GITHUB_OUTPUT
+            echo "✅ Found PR #$PR_NUMBER"
+          else
+            echo "⏭️ No open PR found for this commit"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Create or update GitHub deployment
+        if: steps.check-status.outputs.is_amplify == 'true' && steps.pr-info.outputs.pr_number != ''
+        id: deployment
+        run: |
+          ENVIRONMENT="pr-${{ steps.pr-info.outputs.pr_number }}"
+          DEPLOYMENT_URL="${{ steps.check-status.outputs.target_url }}"
+          STATE="${{ steps.check-status.outputs.state }}"
+          
+          # Check if deployment already exists
+          EXISTING_DEPLOY=$(gh api repos/${{ github.repository }}/deployments \
+            --jq ".[] | select(.environment == \"$ENVIRONMENT\") | .id" \
+            | head -1)
+          
+          if [ -z "$EXISTING_DEPLOY" ]; then
+            # Create new deployment
+            echo "Creating deployment for PR ${{ steps.pr-info.outputs.pr_number }}"
+            DEPLOYMENT_ID=$(gh api repos/${{ github.repository }}/deployments \
+              -X POST \
+              -f ref="${{ steps.pr-info.outputs.pr_sha }}" \
+              -f environment="$ENVIRONMENT" \
+              -f auto_merge=false \
+              -f required_contexts='[]' \
+              -f description="Preview deployment for PR #${{ steps.pr-info.outputs.pr_number }}" \
+              -f payload="{\"url\":\"$DEPLOYMENT_URL\",\"pr_number\":\"${{ steps.pr-info.outputs.pr_number }}\"}" \
+              --jq '.id')
+            
+            echo "deployment_id=$DEPLOYMENT_ID" >> $GITHUB_OUTPUT
+          else
+            echo "Deployment already exists: $EXISTING_DEPLOY"
+            echo "deployment_id=$EXISTING_DEPLOY" >> $GITHUB_OUTPUT
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Update deployment status
+        if: steps.deployment.outputs.deployment_id != ''
+        run: |
+          STATE="${{ steps.check-status.outputs.state }}"
+          DEPLOYMENT_ID="${{ steps.deployment.outputs.deployment_id }}"
+          
+          # Map GitHub status states to deployment states
+          case "$STATE" in
+            "success")
+              DEPLOY_STATE="success"
+              DESC="Deployed successfully to Amplify"
+              ;;
+            "failure"|"error")
+              DEPLOY_STATE="failure"
+              DESC="Deployment failed on Amplify"
+              ;;
+            "pending")
+              DEPLOY_STATE="in_progress"
+              DESC="Deployment in progress on Amplify"
+              ;;
+            *)
+              DEPLOY_STATE="in_progress"
+              DESC="Deployment status updated"
+              ;;
+          esac
+          
+          gh api repos/${{ github.repository }}/deployments/$DEPLOYMENT_ID/statuses \
+            -X POST \
+            -f state="$DEPLOY_STATE" \
+            -f description="$DESC" \
+            -f environment_url="${{ steps.check-status.outputs.target_url }}"
+          
+          echo "Updated deployment status: $DEPLOY_STATE"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  
+  manage-deployment-on-pr:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    
+    steps:
+      - name: Set environment variables
+        id: pr-info
+        run: |
+          PR_NUMBER="${{ github.event.pull_request.number }}"
+          PR_SHA="${{ github.event.pull_request.head.sha }}"
+          ACTION="${{ github.event.action }}"
+          
+          echo "pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
+          echo "pr_sha=$PR_SHA" >> $GITHUB_OUTPUT
+          echo "action=$ACTION" >> $GITHUB_OUTPUT
+      
+      - name: Wait for Amplify to complete
+        if: github.event.action != 'closed'
+        run: |
+          echo "Waiting for Amplify to start deployment..."
+          sleep 5
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Get Amplify status and create deployment
+        if: github.event.action != 'closed'
+        id: create-deployment
+        run: |
+          # Get Amplify deployment URL from status checks
+          STATUSES=$(gh api repos/${{ github.repository }}/commits/${{ steps.pr-info.outputs.pr_sha }}/statuses)
+          
+          AMPLIFY_STATUS=$(echo "$STATUSES" | jq -r '[.[] | select(.context | ascii_downcase | contains("amplify"))][0]')
+          
+          if [ "$AMPLIFY_STATUS" != "null" ] && [ -n "$AMPLIFY_STATUS" ]; then
+            AMPLIFY_URL=$(echo "$AMPLIFY_STATUS" | jq -r '.target_url // empty')
+            STATE=$(echo "$AMPLIFY_STATUS" | jq -r '.state')
+            
+            echo "Found Amplify status: $STATE"
+            echo "URL: $AMPLIFY_URL"
+            
+            ENVIRONMENT="pr-${{ steps.pr-info.outputs.pr_number }}"
+            
+            # Create deployment
+            DEPLOYMENT_ID=$(gh api repos/${{ github.repository }}/deployments \
+              -X POST \
+              -f ref="${{ steps.pr-info.outputs.pr_sha }}" \
+              -f environment="$ENVIRONMENT" \
+              -f auto_merge=false \
+              -f required_contexts='[]' \
+              -f description="Preview deployment for PR #${{ steps.pr-info.outputs.pr_number }}" \
+              -f payload="{\"url\":\"$AMPLIFY_URL\",\"pr_number\":\"${{ steps.pr-info.outputs.pr_number }}\",\"state\":\"$STATE\"}" \
+              --jq '.id' 2>/dev/null || echo "")
+            
+            if [ -n "$DEPLOYMENT_ID" ]; then
+              echo "Created deployment: $DEPLOYMENT_ID"
+              echo "deployment_id=$DEPLOYMENT_ID" >> $GITHUB_OUTPUT
+              
+              # Update status
+              if [ "$STATE" == "success" ] || [ "$STATE" == "pending" ]; then
+                DEPLOY_STATE=$(if [ "$STATE" == "success" ]; then echo "success"; else echo "in_progress"; fi)
+                gh api repos/${{ github.repository }}/deployments/$DEPLOYMENT_ID/statuses \
+                  -X POST \
+                  -f state="$DEPLOY_STATE" \
+                  -f description="Preview deployment ready" \
+                  -f environment_url="$AMPLIFY_URL"
+              fi
+            fi
+          else
+            echo "No Amplify status found yet"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Clean up deployment when PR is closed
+        if: github.event.action == 'closed'
+        run: |
+          ENVIRONMENT="pr-${{ steps.pr-info.outputs.pr_number }}"
+          
+          # Find all deployments for this environment and delete them
+          DEPLOYMENTS=$(gh api repos/${{ github.repository }}/deployments \
+            --jq ".[] | select(.environment == \"$ENVIRONMENT\") | .id" 2>/dev/null || echo "")
+          
+          if [ -n "$DEPLOYMENTS" ]; then
+            echo "$DEPLOYMENTS" | while read DEPLOY_ID; do
+              if [ -n "$DEPLOY_ID" ]; then
+                echo "Deleting deployment $DEPLOY_ID"
+                gh api repos/${{ github.repository }}/deployments/$DEPLOY_ID \
+                  -X DELETE || true
+              fi
+            done
+          else
+            echo "No deployments to clean up"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+
