@@ -131,38 +131,83 @@ jobs:
           PR_NUMBER="${{ github.event.pull_request.number }}"
           PR_SHA="${{ github.event.pull_request.head.sha }}"
           ACTION="${{ github.event.action }}"
+          PR_BRANCH="${{ github.event.pull_request.head.ref }}"
+          BASE_BRANCH="${{ github.event.pull_request.base.ref }}"
           
           echo "pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
           echo "pr_sha=$PR_SHA" >> $GITHUB_OUTPUT
           echo "action=$ACTION" >> $GITHUB_OUTPUT
+          echo "pr_branch=$PR_BRANCH" >> $GITHUB_OUTPUT
+          echo "base_branch=$BASE_BRANCH" >> $GITHUB_OUTPUT
       
-      - name: Wait for Amplify to complete
+      - name: Wait and poll for Amplify deployment
         if: github.event.action != 'closed'
+        id: poll-amplify
         run: |
-          echo "Waiting for Amplify to start deployment..."
-          sleep 5
+          echo "⏳ Waiting for AWS Amplify to deploy PR #${{ steps.pr-info.outputs.pr_number }}..."
+          
+          TIMEOUT=300  # 5 minutes
+          ELAPSED=0
+          SLEEP_INTERVAL=15
+          MAX_ATTEMPTS=$((TIMEOUT / SLEEP_INTERVAL))
+          ATTEMPT=0
+          
+          while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
+            echo "Checking for Amplify status (attempt $((ATTEMPT + 1))/$MAX_ATTEMPTS)..."
+            
+            STATUSES=$(gh api repos/${{ github.repository }}/commits/${{ steps.pr-info.outputs.pr_sha }}/statuses 2>/dev/null || echo "[]")
+            
+            # Look for Amplify status
+            AMPLIFY_STATUS=$(echo "$STATUSES" | jq -r '[.[] | select(.context | ascii_downcase | contains("amplify"))][0]')
+            
+            if [ "$AMPLIFY_STATUS" != "null" ] && [ -n "$AMPLIFY_STATUS" ]; then
+              DEPLOYMENT_URL=$(echo "$AMPLIFY_STATUS" | jq -r '.target_url // empty')
+              STATE=$(echo "$AMPLIFY_STATUS" | jq -r '.state // "pending"')
+              
+              echo "✅ Found Amplify deployment"
+              echo "URL: $DEPLOYMENT_URL"
+              echo "State: $STATE"
+              
+              echo "deployment_url=$DEPLOYMENT_URL" >> $GITHUB_OUTPUT
+              echo "state=$STATE" >> $GITHUB_OUTPUT
+              echo "found=true" >> $GITHUB_OUTPUT
+              break
+            fi
+            
+            sleep $SLEEP_INTERVAL
+            ELAPSED=$((ELAPSED + SLEEP_INTERVAL))
+            ATTEMPT=$((ATTEMPT + 1))
+          done
+          
+          if [ "${{ steps.poll-amplify.outputs.found }}" != "true" ]; then
+            echo "⏰ Timeout waiting for Amplify deployment"
+            echo "deployment_url=" >> $GITHUB_OUTPUT
+            echo "state=pending" >> $GITHUB_OUTPUT
+            echo "found=false" >> $GITHUB_OUTPUT
+          fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
       
-      - name: Get Amplify status and create deployment
-        if: github.event.action != 'closed'
+      - name: Create GitHub deployment
+        if: github.event.action != 'closed' && steps.poll-amplify.outputs.found == 'true'
         id: create-deployment
         run: |
-          # Get Amplify deployment URL from status checks
-          STATUSES=$(gh api repos/${{ github.repository }}/commits/${{ steps.pr-info.outputs.pr_sha }}/statuses)
+          AMPLIFY_URL="${{ steps.poll-amplify.outputs.deployment_url }}"
+          STATE="${{ steps.poll-amplify.outputs.state }}"
+          ENVIRONMENT="pr-${{ steps.pr-info.outputs.pr_number }}"
           
-          AMPLIFY_STATUS=$(echo "$STATUSES" | jq -r '[.[] | select(.context | ascii_downcase | contains("amplify"))][0]')
+          echo "Creating deployment for PR #${{ steps.pr-info.outputs.pr_number }}"
+          echo "Environment: $ENVIRONMENT"
+          echo "URL: $AMPLIFY_URL"
+          echo "State: $STATE"
           
-          if [ "$AMPLIFY_STATUS" != "null" ] && [ -n "$AMPLIFY_STATUS" ]; then
-            AMPLIFY_URL=$(echo "$AMPLIFY_STATUS" | jq -r '.target_url // empty')
-            STATE=$(echo "$AMPLIFY_STATUS" | jq -r '.state')
-            
-            echo "Found Amplify status: $STATE"
-            echo "URL: $AMPLIFY_URL"
-            
-            ENVIRONMENT="pr-${{ steps.pr-info.outputs.pr_number }}"
-            
-            # Create deployment
+          # Check if deployment already exists
+          EXISTING=$(gh api repos/${{ github.repository }}/deployments \
+            --jq ".[] | select(.environment == \"$ENVIRONMENT\") | .id" 2>/dev/null | head -1)
+          
+          if [ -z "$EXISTING" ]; then
+            # Create new deployment
             DEPLOYMENT_ID=$(gh api repos/${{ github.repository }}/deployments \
               -X POST \
               -f ref="${{ steps.pr-info.outputs.pr_sha }}" \
@@ -170,25 +215,89 @@ jobs:
               -f auto_merge=false \
               -f required_contexts='[]' \
               -f description="Preview deployment for PR #${{ steps.pr-info.outputs.pr_number }}" \
-              -f payload="{\"url\":\"$AMPLIFY_URL\",\"pr_number\":\"${{ steps.pr-info.outputs.pr_number }}\",\"state\":\"$STATE\"}" \
+              -f payload="{\"url\":\"$AMPLIFY_URL\",\"pr_number\":\"${{ steps.pr-info.outputs.pr_number }}\"}" \
               --jq '.id' 2>/dev/null || echo "")
             
             if [ -n "$DEPLOYMENT_ID" ]; then
-              echo "Created deployment: $DEPLOYMENT_ID"
+              echo "✅ Created deployment: $DEPLOYMENT_ID"
               echo "deployment_id=$DEPLOYMENT_ID" >> $GITHUB_OUTPUT
-              
-              # Update status
-              if [ "$STATE" == "success" ] || [ "$STATE" == "pending" ]; then
-                DEPLOY_STATE=$(if [ "$STATE" == "success" ]; then echo "success"; else echo "in_progress"; fi)
-                gh api repos/${{ github.repository }}/deployments/$DEPLOYMENT_ID/statuses \
-                  -X POST \
-                  -f state="$DEPLOY_STATE" \
-                  -f description="Preview deployment ready" \
-                  -f environment_url="$AMPLIFY_URL"
-              fi
+            else
+              echo "⚠️ Failed to create deployment"
+              echo "deployment_id=" >> $GITHUB_OUTPUT
             fi
           else
-            echo "No Amplify status found yet"
+            echo "Deployment already exists: $EXISTING"
+            echo "deployment_id=$EXISTING" >> $GITHUB_OUTPUT
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Update deployment status
+        if: steps.create-deployment.outputs.deployment_id != ''
+        run: |
+          DEPLOYMENT_ID="${{ steps.create-deployment.outputs.deployment_id }}"
+          AMPLIFY_URL="${{ steps.poll-amplify.outputs.deployment_url }}"
+          STATE="${{ steps.poll-amplify.outputs.state }}"
+          
+          # Map status to deployment state
+          case "$STATE" in
+            "success")
+              DEPLOY_STATE="success"
+              DESC="Preview deployment ready on AWS Amplify"
+              ;;
+            "pending")
+              DEPLOY_STATE="in_progress"
+              DESC="Deployment in progress on AWS Amplify"
+              ;;
+            "failure"|"error")
+              DEPLOY_STATE="failure"
+              DESC="Deployment failed on AWS Amplify"
+              ;;
+            *)
+              DEPLOY_STATE="in_progress"
+              DESC="Deployment status: $STATE"
+              ;;
+          esac
+          
+          echo "Updating deployment status: $DEPLOY_STATE"
+          
+          gh api repos/${{ github.repository }}/deployments/$DEPLOYMENT_ID/statuses \
+            -X POST \
+            -f state="$DEPLOY_STATE" \
+            -f description="$DESC" \
+            -f environment_url="$AMPLIFY_URL"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Comment PR with deployment link
+        if: steps.create-deployment.outputs.deployment_id != '' && steps.poll-amplify.outputs.deployment_url != ''
+        continue-on-error: true
+        run: |
+          DEPLOYMENT_URL="${{ steps.poll-amplify.outputs.deployment_url }}"
+          
+          COMMENT="## 🚀 Preview Deployment Available
+          
+          Your PR has been deployed to AWS Amplify!
+          
+          👉 **[View Preview]($DEPLOYMENT_URL)**
+          
+          This deployment will automatically update on each push to this PR.
+          "
+          
+          # Check if bot has already commented
+          EXISTING_COMMENT=$(gh api repos/${{ github.repository }}/issues/${{ steps.pr-info.outputs.pr_number }}/comments \
+            --jq '[.[] | select(.user.login == "github-actions[bot]" and (.body | contains("Preview Deployment"))) | .id] | .[0]')
+          
+          if [ -n "$EXISTING_COMMENT" ] && [ "$EXISTING_COMMENT" != "null" ]; then
+            echo "Updating existing comment (ID: $EXISTING_COMMENT)"
+            gh api repos/${{ github.repository }}/issues/comments/$EXISTING_COMMENT \
+              -X PATCH \
+              -f body="$COMMENT"
+          else
+            echo "Creating new comment"
+            gh api repos/${{ github.repository }}/issues/${{ steps.pr-info.outputs.pr_number }}/comments \
+              -X POST \
+              -f body="$COMMENT"
           fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
