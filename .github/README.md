@@ -8,21 +8,38 @@ This directory contains GitHub Actions workflows that integrate AWS Amplify depl
 
 Automatically creates GitHub deployments when AWS Amplify deploys PR branches. This workflow:
 
-- **Listens for Amplify status checks**: When AWS Amplify creates a status check on a commit, this workflow detects it and creates a corresponding GitHub deployment
-- **Manages deployment lifecycle**: Creates deployments when Amplify starts building, updates them when the deployment completes, and cleans them up when PRs are closed
-- **Syncs deployment status**: Updates GitHub deployment status based on Amplify's build status (success, failure, in progress)
+- **Waits for Amplify deployments**: Polls for Amplify status checks when a PR is opened or updated (waits up to 5 minutes)
+- **Creates GitHub deployments**: Creates a GitHub deployment with environment name `pr-{PR_NUMBER}` linking to the Amplify preview
+- **Posts deployment comments**: Automatically comments on the PR with a link to the preview deployment
+- **Updates deployment status**: Syncs GitHub deployment status based on Amplify's build status (success, failure, in progress)
+- **Cleans up on close**: Removes GitHub deployments when PRs are closed
 
 **Triggers:**
-- `status` event: Fires when any commit status changes (including Amplify deployments)
-- `pull_request` event: Fires on PR open, update, sync, and close
+- `status` event: Fires when AWS Amplify posts a status check (for near-instant updates)
+- `pull_request` event: Fires on PR open, update, sync, and close (polls for Amplify deployment)
 
 **How it works:**
-1. When you open a PR, Amplify automatically starts building
-2. Amplify creates status checks on the commit
-3. This workflow detects Amplify status checks
-4. Creates a GitHub deployment with environment name `pr-{PR_NUMBER}`
-5. Updates the deployment status based on Amplify's build result
-6. When the PR is closed, it cleans up the deployment
+1. When you open a PR to `main`, this workflow starts automatically
+2. It waits (polls) for AWS Amplify to post a status check on the commit
+3. Once detected, it creates a GitHub deployment environment named `pr-{PR_NUMBER}`
+4. A bot comment is posted on the PR with a direct link to the Amplify preview
+5. The deployment status updates in real-time based on Amplify's build progress
+6. When the PR is closed or merged, the deployment environment is cleaned up
+
+### `amplify-main-deployment.yml`
+
+Automatically syncs main branch deployments to GitHub:
+
+- **Triggers on push to main**: When you push directly to main, it creates a GitHub deployment
+- **Links to Amplify**: Connects the GitHub deployment to your Amplify app at `https://main.d4ca2esg7oi8k.amplifyapp.com`
+- **Creates "production" environment**: Shows up in GitHub's deployments page
+
+**How it works:**
+1. You push to `main` branch
+2. AWS Amplify automatically builds and deploys (if configured)
+3. This workflow polls for Amplify status checks (waits up to 2 minutes)
+4. Creates a GitHub deployment with environment "production"
+5. The deployment appears in GitHub's deployment history
 
 ### `amplify-deployment.yml`
 
