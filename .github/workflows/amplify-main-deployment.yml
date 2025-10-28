@@ -1,0 +1,112 @@
+name: Sync Main Branch Deployment
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  sync-main-deployment:
+    runs-on: ubuntu-latest
+    # Don't trigger on commits we create (avoid infinite loop)
+    if: github.event.committer.login != 'github-actions[bot]'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Wait for Amplify status
+        id: wait-for-amplify
+        run: |
+          echo "Waiting for Amplify to post status check..."
+          
+          # Wait and poll for Amplify status check (max 2 minutes)
+          TIMEOUT=120
+          ELAPSED=0
+          SLEEP_INTERVAL=10
+          
+          while [ $ELAPSED -lt $TIMEOUT ]; do
+            STATUSES=$(gh api repos/${{ github.repository }}/commits/${{ github.sha }}/statuses 2>/dev/null || echo "[]")
+            
+            AMPLIFY_STATUS=$(echo "$STATUSES" | jq -r '[.[] | select(.context | ascii_downcase | contains("amplify"))][0]')
+            
+            if [ "$AMPLIFY_STATUS" != "null" ] && [ -n "$AMPLIFY_STATUS" ]; then
+              DEPLOYMENT_URL=$(echo "$AMPLIFY_STATUS" | jq -r '.target_url')
+              STATE=$(echo "$AMPLIFY_STATUS" | jq -r '.state')
+              
+              echo "deployment_url=$DEPLOYMENT_URL" >> $GITHUB_OUTPUT
+              echo "state=$STATE" >> $GITHUB_OUTPUT
+              echo "✅ Found Amplify deployment"
+              break
+            fi
+            
+            echo "Waiting... ($ELAPSED seconds)"
+            sleep $SLEEP_INTERVAL
+            ELAPSED=$((ELAPSED + SLEEP_INTERVAL))
+          done
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Get Amplify deployment URL
+        id: amplify-url
+        run: |
+          # Try to get the Amplify URL from status check or use known deployment
+          STATUSES=$(gh api repos/${{ github.repository }}/commits/${{ github.sha }}/statuses 2>/dev/null || echo "[]")
+          
+          # Check for Amplify status
+          AMPLIFY_STATUS=$(echo "$STATUSES" | jq -r '[.[] | select(.context | ascii_downcase | contains("amplify"))][0]')
+          
+          if [ "$AMPLIFY_STATUS" != "null" ] && [ -n "$AMPLIFY_STATUS" ]; then
+            DEPLOYMENT_URL=$(echo "$AMPLIFY_STATUS" | jq -r '.target_url')
+            STATE=$(echo "$AMPLIFY_STATUS" | jq -r '.state')
+          else
+            # Fallback: use known Amplify app URL for main branch
+            # Update this with your actual Amplify app URL
+            DEPLOYMENT_URL="https://main.d4ca2esg7oi8k.amplifyapp.com"
+            STATE="success"
+          fi
+          
+          echo "deployment_url=$DEPLOYMENT_URL" >> $GITHUB_OUTPUT
+          echo "state=$STATE" >> $GITHUB_OUTPUT
+          echo "Deployment URL: $DEPLOYMENT_URL"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Create GitHub deployment
+        run: |
+          ENVIRONMENT="production"
+          
+          # Check if deployment already exists for this commit
+          EXISTING=$(gh api repos/${{ github.repository }}/deployments \
+            --jq ".[] | select(.sha == \"${{ github.sha }}\" and .environment == \"$ENVIRONMENT\") | .id" \
+            | head -1)
+          
+          if [ -z "$EXISTING" ]; then
+            echo "Creating deployment for main branch"
+            DEPLOYMENT_ID=$(gh api repos/${{ github.repository }}/deployments \
+              -X POST \
+              -f ref="${{ github.sha }}" \
+              -f environment="$ENVIRONMENT" \
+              -f auto_merge=false \
+              -f required_contexts='[]' \
+              -f description="Deployed to AWS Amplify" \
+              -f payload="{\"url\":\"${{ steps.amplify-url.outputs.deployment_url }}\"}" \
+              --jq '.id')
+            
+            echo "✅ Created deployment: $DEPLOYMENT_ID"
+          else
+            echo "Deployment already exists: $EXISTING"
+            DEPLOYMENT_ID=$EXISTING
+          fi
+          
+          # Update deployment status
+          DEPLOY_STATE=$(if [ "${{ steps.amplify-url.outputs.state }}" == "success" ]; then echo "success"; else echo "in_progress"; fi)
+          
+          gh api repos/${{ github.repository }}/deployments/$DEPLOYMENT_ID/statuses \
+            -X POST \
+            -f state="$DEPLOY_STATE" \
+            -f description="Deployed to AWS Amplify" \
+            -f environment_url="${{ steps.amplify-url.outputs.deployment_url }}"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
