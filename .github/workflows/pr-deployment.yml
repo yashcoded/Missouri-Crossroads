@@ -9,6 +9,11 @@ on:
 jobs:
   sync-deployment-on-status:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      deployments: write
+      pull-requests: write
+      checks: read
     if: github.event_name == 'status'
     
     steps:
@@ -122,6 +127,11 @@ jobs:
   
   manage-deployment-on-pr:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      deployments: write
+      pull-requests: write
+      checks: read
     if: github.event_name == 'pull_request'
     
     steps:

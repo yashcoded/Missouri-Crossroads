@@ -8,6 +8,10 @@ on:
 jobs:
   sync-main-deployment:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      deployments: write
+      checks: read
     # Don't trigger on commits we create (avoid infinite loop)
     if: github.event.committer.login != 'github-actions[bot]'
     
