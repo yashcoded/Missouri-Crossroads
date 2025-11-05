@@ -13,6 +13,14 @@ const nextConfig: NextConfig = {
     S3_BUCKET_NAME: process.env.S3_BUCKET_NAME,
     COGNITO_CLIENT_SECRET: process.env.COGNITO_CLIENT_SECRET,
   },
+  
+  // Suppress ESLint warnings during builds
+  eslint: {
+    ignoreDuringBuilds: false, // Keep ESLint enabled but warnings are suppressed via .eslintrc.json
+  },
+  typescript: {
+    ignoreBuildErrors: false, // Keep TypeScript checks enabled
+  },
 };
 
 export default nextConfig;

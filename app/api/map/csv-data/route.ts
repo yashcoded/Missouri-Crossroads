@@ -93,8 +93,8 @@ function parseDMMCoordinates(dmmString: string): { lat: number; lng: number } | 
     const latPattern2 = /(\d+)[° ]?\s+(\d+(?:\.\d+)?)[' ]?(?:\s+(\d+(?:\.\d+)?)[" ]?)?\s*([NS])/i;
     const lngPattern2 = /(\d+)[° ]?\s+(\d+(?:\.\d+)?)[' ]?(?:\s+(\d+(?:\.\d+)?)[" ]?)?\s*([EW])/i;
     
-    let latMatch = cleanString.match(latPattern) || cleanString.match(latPattern2);
-    let lngMatch = cleanString.match(lngPattern) || cleanString.match(lngPattern2);
+    const latMatch = cleanString.match(latPattern) || cleanString.match(latPattern2);
+    const lngMatch = cleanString.match(lngPattern) || cleanString.match(lngPattern2);
     
     if (!latMatch || !lngMatch) {
       return null;
@@ -135,7 +135,7 @@ function parseDMMCoordinates(dmmString: string): { lat: number; lng: number } | 
     }
 
     return { lat: latDecimal, lng: lngDecimal };
-  } catch (error) {
+  } catch (_error) {
     return null;
   }
 }
@@ -360,8 +360,8 @@ async function parseCSV(csvText: string, centerLat?: string, centerLng?: string,
     // The CSV has 1500+ entries, so we need to process them all
   }
 
-  // Calculate rows without coordinates
-  rowsWithoutCoordinates = processedRows - rowsWithCoordinates;
+  // Calculate rows without coordinates (for potential future logging)
+  const _rowsWithoutCoordinates = processedRows - rowsWithCoordinates;
   
   // Skip geocoding for faster initial load - only geocode if explicitly requested
   const shouldGeocode = searchParams?.get('geocode') === 'true';
@@ -388,7 +388,7 @@ async function parseCSV(csvText: string, centerLat?: string, centerLng?: string,
         } else {
           failedGeocodingCount++;
         }
-      } catch (error) {
+      } catch (_error) {
         console.log(`❌ Failed to geocode: ${location.fullAddress}`);
         failedGeocodingCount++;
       }
