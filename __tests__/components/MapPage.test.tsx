@@ -31,7 +31,11 @@ describe('MapPage Component', () => {
     // Check for gradient background
     expect(container.querySelector('.bg-gradient-to-br')).toBeInTheDocument()
     
-    // Check for title styling
-    expect(screen.getByText('Missouri Crossroads Interactive Map')).toHaveClass('text-5xl', 'font-bold')
+    // Check for title styling (updated to match responsive classes)
+    const title = screen.getByText('Missouri Crossroads Interactive Map')
+    expect(title).toHaveClass('font-bold')
+    expect(title.className).toContain('text-3xl')
+    expect(title.className).toContain('sm:text-4xl')
+    expect(title.className).toContain('lg:text-5xl')
   })
 })

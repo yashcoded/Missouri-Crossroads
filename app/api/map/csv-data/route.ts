@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
+import { promises as fs } from 'fs';
+import path from 'path';
 
 // IMPORTANT: AWS credentials are server-side only and should NEVER use NEXT_PUBLIC_ prefix
 const accessKeyId = process.env.AWS_ACCESS_KEY_ID || process.env.AMPLIFY_AWS_ACCESS_KEY_ID || '';
@@ -28,33 +30,176 @@ const BUCKET_NAME = 'mr-crossroads-bucket';
 const cache = new Map<string, { data: any[], timestamp: number, locationCount: number }>();
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes cache
 
+// Geocoding cache - persistent file-based cache to avoid redundant API calls
+const GEOCODING_CACHE_FILE = path.join(process.cwd(), '.geocoding-cache.json');
+const geocodingCache = new Map<string, { lat: number; lng: number; timestamp: number }>();
+
+// Load geocoding cache from file on startup
+async function loadGeocodingCache(): Promise<void> {
+  try {
+    const fileContent = await fs.readFile(GEOCODING_CACHE_FILE, 'utf-8');
+    const cacheData = JSON.parse(fileContent);
+    Object.entries(cacheData).forEach(([address, data]: [string, any]) => {
+      geocodingCache.set(address, data);
+    });
+    console.log(`📦 Loaded ${geocodingCache.size} geocoded addresses from cache`);
+  } catch (error) {
+    // File doesn't exist yet, that's okay
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+      console.log(`⚠️ Could not load geocoding cache: ${error}`);
+    }
+  }
+}
+
+// Save geocoding cache to file
+async function saveGeocodingCache(): Promise<void> {
+  try {
+    const cacheData: Record<string, { lat: number; lng: number; timestamp: number }> = {};
+    geocodingCache.forEach((value, key) => {
+      cacheData[key] = value;
+    });
+    await fs.writeFile(GEOCODING_CACHE_FILE, JSON.stringify(cacheData, null, 2), 'utf-8');
+  } catch (error) {
+    console.log(`⚠️ Could not save geocoding cache: ${error}`);
+  }
+}
+
+// Initialize cache on module load
+loadGeocodingCache().catch(console.error);
+
 // Simple geocoding function using Google Maps Geocoding API
 async function geocodeAddress(address: string): Promise<{ lat: number; lng: number } | null> {
   try {
-    const apiKey = process.env.NEXT_PUBLIC_MAP_KEY;
+    // Clean up address - remove invalid placeholders and malformed addresses
+    let cleanAddress = address.trim();
+    
+    // Skip addresses that are clearly invalid
+    if (!cleanAddress || 
+        cleanAddress === 'N/A' || 
+        cleanAddress === 'Unknown' || 
+        cleanAddress === 'FILL' ||
+        cleanAddress.includes('FILL, FILL') ||
+        cleanAddress.includes('N/A, N/A, N/A') ||
+        cleanAddress.includes('Unknown, Unknown') ||
+        cleanAddress.length < 5) {
+      return null;
+    }
+    
+    // Clean up common issues
+    cleanAddress = cleanAddress
+      .replace(/,,+/g, ',') // Remove multiple commas
+      .replace(/,\s*,/g, ',') // Remove empty fields
+      .replace(/^\s*,\s*|\s*,\s*$/g, '') // Remove leading/trailing commas
+      .replace(/\s+/g, ' ') // Normalize whitespace
+      .trim();
+    
+    // Ensure it includes Missouri if not already present
+    if (!cleanAddress.toUpperCase().includes('MO') && !cleanAddress.toUpperCase().includes('MISSOURI')) {
+      cleanAddress = `${cleanAddress}, MO`;
+    }
+    
+    // Normalize address for cache lookup (lowercase, remove extra spaces)
+    const normalizedAddress = cleanAddress.toLowerCase().replace(/\s+/g, ' ').trim();
+    
+    // Check cache first
+    const cached = geocodingCache.get(normalizedAddress);
+    if (cached) {
+      // Cache hit - return cached coordinates
+      console.log(`💾 Cache hit for: ${cleanAddress.substring(0, 50)}... → ${cached.lat}, ${cached.lng}`);
+      return {
+        lat: cached.lat,
+        lng: cached.lng
+      };
+    }
+    
+    // Cache miss - make API call
+    const apiKey = process.env.NEXT_PUBLIC_MAP_KEY || process.env.GOOGLE_MAPS_SERVER_API_KEY;
     if (!apiKey) {
-      console.log('No Google Maps API key available for geocoding');
+      console.log('⚠️ No Google Maps API key available for geocoding');
       return null;
     }
 
-    const geocodeUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${apiKey}`;
+    const geocodeUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(cleanAddress)}&key=${apiKey}`;
     
     const response = await fetch(geocodeUrl);
     const data = await response.json();
     
     if (data.status === 'OK' && data.results && data.results.length > 0) {
       const location = data.results[0].geometry.location;
-      console.log(`✅ Geocoded: ${address} → ${location.lat}, ${location.lng}`);
-      return {
-        lat: location.lat,
-        lng: location.lng
-      };
+      
+      // Validate coordinates are in Missouri (rough bounds)
+      if (location.lat >= 35 && location.lat <= 41 && location.lng >= -96 && location.lng <= -89) {
+        const coords = {
+          lat: location.lat,
+          lng: location.lng
+        };
+        
+        // Save to cache
+        geocodingCache.set(normalizedAddress, {
+          ...coords,
+          timestamp: Date.now()
+        });
+        
+        // Save cache to file asynchronously (don't wait)
+        saveGeocodingCache().catch(console.error);
+        
+        console.log(`✅ Geocoded (API): ${cleanAddress.substring(0, 60)}... → ${coords.lat}, ${coords.lng}`);
+        return coords;
+      } else {
+        console.log(`⚠️ Geocoded coordinates outside Missouri bounds for: ${cleanAddress.substring(0, 60)}...`);
+        return null;
+      }
+    } else if (data.status === 'ZERO_RESULTS') {
+      // Try without MO suffix if first attempt failed
+      if (cleanAddress.endsWith(', MO')) {
+        const addressWithoutMO = cleanAddress.replace(/,\s*MO\s*$/i, '').trim();
+        if (addressWithoutMO.length > 5) {
+          const retryAddress = addressWithoutMO + ', Missouri, USA';
+          const normalizedRetryAddress = retryAddress.toLowerCase().replace(/\s+/g, ' ').trim();
+          
+          // Check cache for retry address
+          const retryCached = geocodingCache.get(normalizedRetryAddress);
+          if (retryCached) {
+            console.log(`💾 Cache hit (retry): ${addressWithoutMO.substring(0, 50)}... → ${retryCached.lat}, ${retryCached.lng}`);
+            return {
+              lat: retryCached.lat,
+              lng: retryCached.lng
+            };
+          }
+          
+          const retryUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(retryAddress)}&key=${apiKey}`;
+          const retryResponse = await fetch(retryUrl);
+          const retryData = await retryResponse.json();
+          
+          if (retryData.status === 'OK' && retryData.results && retryData.results.length > 0) {
+            const location = retryData.results[0].geometry.location;
+            if (location.lat >= 35 && location.lat <= 41 && location.lng >= -96 && location.lng <= -89) {
+              const coords = {
+                lat: location.lat,
+                lng: location.lng
+              };
+              
+              // Save retry result to cache
+              geocodingCache.set(normalizedRetryAddress, {
+                ...coords,
+                timestamp: Date.now()
+              });
+              saveGeocodingCache().catch(console.error);
+              
+              console.log(`✅ Geocoded (retry API): ${addressWithoutMO.substring(0, 60)}... → ${coords.lat}, ${coords.lng}`);
+              return coords;
+            }
+          }
+        }
+      }
+      console.log(`❌ No results for: ${cleanAddress.substring(0, 60)}...`);
+      return null;
     } else {
-      console.log(`❌ Geocoding failed for: ${address} - Status: ${data.status}`);
+      console.log(`❌ Geocoding failed for: ${cleanAddress.substring(0, 60)}... - Status: ${data.status}`);
       return null;
     }
   } catch (error) {
-    console.log(`Geocoding error for ${address}:`, error);
+    console.log(`⚠️ Geocoding error for ${address.substring(0, 60)}...:`, error instanceof Error ? error.message : error);
     return null;
   }
 }
@@ -363,44 +508,139 @@ async function parseCSV(csvText: string, centerLat?: string, centerLng?: string,
   // Calculate rows without coordinates (for potential future logging)
   const _rowsWithoutCoordinates = processedRows - rowsWithCoordinates;
   
-  // Skip geocoding for faster initial load - only geocode if explicitly requested
-  const shouldGeocode = searchParams?.get('geocode') === 'true';
+  // Automatically geocode addresses that need coordinates
+  // IMPORTANT: Only geocode on initial load, NOT on viewport requests (to avoid repeated API calls)
+  const shouldGeocode = searchParams?.get('geocode') !== 'false' && !isViewport;
   
   let geocodedCount = 0;
   let failedGeocodingCount = 0;
   
-  if (shouldGeocode) {
-    // Geocode addresses that need coordinates
-    const locationsToGeocode = locations.filter(loc => loc.needsGeocoding);
-    console.log(`🗺️ Geocoding ${locationsToGeocode.length} addresses...`);
-    
-    for (const location of locationsToGeocode) {
-      try {
-        const coords = await geocodeAddress(location.fullAddress);
-        if (coords) {
-          location.lat = coords.lat;
-          location.lng = coords.lng;
-          location.needsGeocoding = false;
-          geocodedCount++;
-          
-          // Add small delay to avoid rate limiting (Google allows 50 requests per second)
-          await new Promise(resolve => setTimeout(resolve, 25));
-        } else {
-          failedGeocodingCount++;
-        }
-      } catch (_error) {
-        console.log(`❌ Failed to geocode: ${location.fullAddress}`);
-        failedGeocodingCount++;
+  // First, check cache for any addresses that need geocoding (even if geocoding is disabled)
+  // This ensures we use cached results even on viewport requests
+  let cacheHits = 0;
+  locations.forEach(location => {
+    if (location.needsGeocoding && location.fullAddress) {
+      const normalizedAddress = location.fullAddress.toLowerCase().replace(/\s+/g, ' ').trim();
+      const cached = geocodingCache.get(normalizedAddress);
+      if (cached) {
+        location.lat = cached.lat;
+        location.lng = cached.lng;
+        location.needsGeocoding = false;
+        cacheHits++;
       }
     }
-  } else {
-    console.log(`⚡ Skipping geocoding for faster load - use ?geocode=true to enable`);
+  });
+  
+  if (cacheHits > 0) {
+    console.log(`💾 Found ${cacheHits} addresses in geocoding cache`);
   }
   
-  // Include all locations - those with existing coordinates AND those that were successfully geocoded
-  let finalLocations = locations.filter(loc => {
-    return (!loc.needsGeocoding && (loc.lat !== 0 || loc.lng !== 0));
-  });
+  if (shouldGeocode) {
+    // Geocode addresses that still need coordinates (after cache check)
+    const locationsToGeocode = locations.filter(loc => 
+      loc.needsGeocoding && 
+      loc.fullAddress && 
+      loc.fullAddress.trim().length > 5 &&
+      loc.fullAddress !== 'N/A' &&
+      !loc.fullAddress.includes('FILL, FILL')
+    );
+    
+    const cacheSizeBefore = geocodingCache.size;
+    console.log(`🗺️ Geocoding ${locationsToGeocode.length} addresses without coordinates... (${cacheSizeBefore} addresses in cache)`);
+    
+    if (locationsToGeocode.length > 0) {
+      // Process in batches to avoid rate limiting (Google allows 50 requests per second)
+      const batchSize = 10;
+      const delayBetweenBatches = 200; // 200ms between batches = ~50 requests per second max
+      let apiCalls = 0;
+      
+      for (let i = 0; i < locationsToGeocode.length; i += batchSize) {
+        const batch = locationsToGeocode.slice(i, i + batchSize);
+        
+        // Process batch in parallel
+        await Promise.all(batch.map(async (location) => {
+          try {
+            // Track if this was a cache hit or API call
+            const wasInCache = geocodingCache.has(location.fullAddress.toLowerCase().replace(/\s+/g, ' ').trim());
+            
+            const coords = await geocodeAddress(location.fullAddress);
+            if (coords) {
+              location.lat = coords.lat;
+              location.lng = coords.lng;
+              location.needsGeocoding = false;
+              geocodedCount++;
+              
+              // Track cache vs API usage
+              if (!wasInCache) {
+                apiCalls++;
+              }
+            } else {
+              failedGeocodingCount++;
+              if (!wasInCache) {
+                apiCalls++; // Still counted as an API call even if it failed
+              }
+            }
+          } catch (error) {
+            console.log(`⚠️ Error geocoding ${location.fullAddress?.substring(0, 50)}...:`, error instanceof Error ? error.message : error);
+            failedGeocodingCount++;
+            apiCalls++;
+          }
+        }));
+        
+        // Save cache periodically (every 100 addresses) to avoid losing data
+        if (i > 0 && i % 100 === 0) {
+          await saveGeocodingCache();
+        }
+        
+        // Add delay between batches (except for the last batch)
+        if (i + batchSize < locationsToGeocode.length) {
+          await new Promise(resolve => setTimeout(resolve, delayBetweenBatches));
+        }
+        
+        // Log progress every 50 locations
+        if (i > 0 && i % 50 === 0) {
+          console.log(`📍 Geocoding progress: ${i}/${locationsToGeocode.length} processed (${geocodedCount} succeeded, ${failedGeocodingCount} failed, ${apiCalls} API calls)`);
+        }
+      }
+      
+      // Final cache save
+      await saveGeocodingCache();
+      
+      const cacheSizeAfter = geocodingCache.size;
+      const newCacheEntries = cacheSizeAfter - cacheSizeBefore;
+      
+      console.log(`✅ Geocoding complete: ${geocodedCount} succeeded, ${failedGeocodingCount} failed out of ${locationsToGeocode.length} addresses`);
+      console.log(`💰 Cost savings: ${cacheHits} from cache, ${apiCalls} API calls, ${newCacheEntries} new entries cached`);
+      console.log(`   Estimated API cost saved: ~$${(cacheHits * 0.005).toFixed(4)} (at $0.005 per request)`);
+    }
+  } else {
+    if (isViewport) {
+      console.log(`⚡ Geocoding skipped for viewport request (using cached results: ${cacheHits} locations)`);
+    } else {
+      console.log(`⚡ Geocoding disabled - use ?geocode=false to disable (enabled by default)`);
+      if (cacheHits > 0) {
+        console.log(`   Using ${cacheHits} cached geocoding results`);
+      }
+    }
+  }
+  
+  // Include ALL locations - those with coordinates AND those without (for sidebar display)
+  // The frontend will filter: map markers need coordinates, sidebar shows all locations
+  let finalLocations = locations;
+  
+  // Count locations with and without coordinates for logging
+  const locationsWithCoords = locations.filter(loc => 
+    loc.lat !== undefined && loc.lat !== null && loc.lat !== 0 && 
+    loc.lng !== undefined && loc.lng !== null && loc.lng !== 0 &&
+    !loc.needsGeocoding
+  );
+  const locationsWithoutCoords = locations.filter(loc => 
+    loc.needsGeocoding || 
+    !loc.lat || loc.lat === 0 || 
+    !loc.lng || loc.lng === 0
+  );
+  
+  console.log(`📊 Location breakdown: ${locationsWithCoords.length} with coordinates, ${locationsWithoutCoords.length} without coordinates (will show in sidebar)`);
 
   // Function to calculate distance between two points in miles
   function calculateDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
@@ -416,7 +656,7 @@ async function parseCSV(csvText: string, centerLat?: string, centerLng?: string,
 
   // If center coordinates are provided, filter by distance and prioritize nearby locations
   if (centerLat && centerLng) {
-    console.log(`🗺️ Total locations with coordinates before filtering: ${finalLocations.length}`);
+    console.log(`🗺️ Total locations: ${finalLocations.length} (${locationsWithCoords.length} with coordinates, ${locationsWithoutCoords.length} without coordinates)`);
     const userLat = parseFloat(centerLat);
     const userLng = parseFloat(centerLng);
     
@@ -428,44 +668,69 @@ async function parseCSV(csvText: string, centerLat?: string, centerLng?: string,
     if (isViewport === true) {
       console.log(`🗺️ Viewport request - loading locations around ${centerLat}, ${centerLng}`);
       
-      // For viewport requests, load more locations in a wider area
+      // For viewport requests, prioritize by distance but include all locations
       finalLocations = finalLocations.map(loc => {
-        const distance = calculateDistance(loc.lat, loc.lng, userLat, userLng);
+        // Calculate distance only for locations with valid coordinates
+        const hasValidCoords = loc.lat !== undefined && loc.lat !== null && loc.lat !== 0 && 
+                               loc.lng !== undefined && loc.lng !== null && loc.lng !== 0 &&
+                               !loc.needsGeocoding;
+        const distance = hasValidCoords
+          ? calculateDistance(loc.lat!, loc.lng!, userLat, userLng)
+          : Infinity;
         return { ...loc, distance };
-      }).sort((a, b) => a.distance - b.distance);
+      }).sort((a, b) => {
+        // Sort by distance (locations without coordinates go to end)
+        return a.distance - b.distance;
+      });
       
-      // For viewport, limit to 200 locations to avoid overwhelming the map
-      if (finalLocations.length > 200) {
-        console.log(`🎯 Viewport loading: 200 closest locations`);
-        finalLocations = finalLocations.slice(0, 200);
-      }
+      const withCoords = finalLocations.filter(loc => loc.distance !== Infinity).length;
+      const withoutCoords = finalLocations.filter(loc => loc.distance === Infinity).length;
+      console.log(`🎯 Viewport loading: ${finalLocations.length} locations (${withCoords} with coordinates, ${withoutCoords} without - sorted by distance)`);
     } else if (isSTLArea) {
       console.log(`🏙️ St. Louis area detected (${distanceFromDowntown.toFixed(1)} miles from downtown)`);
       
-      // Filter to only locations within 100 miles of downtown St. Louis
-      finalLocations = finalLocations.filter(loc => {
-        const distance = calculateDistance(loc.lat, loc.lng, downtownSTL.lat, downtownSTL.lng);
+      // Filter to only locations within 100 miles of downtown St. Louis (only those with coordinates)
+      // But include all locations without coordinates at the end
+      const locationsWithValidCoords = finalLocations.filter(loc => {
+        const hasValidCoords = loc.lat !== undefined && loc.lat !== null && loc.lat !== 0 && 
+                               loc.lng !== undefined && loc.lng !== null && loc.lng !== 0 &&
+                               !loc.needsGeocoding;
+        if (!hasValidCoords) return false;
+        const distance = calculateDistance(loc.lat!, loc.lng!, downtownSTL.lat, downtownSTL.lng);
         return distance <= 100; // 100 miles from downtown St. Louis
       }).map(loc => {
-        const distance = calculateDistance(loc.lat, loc.lng, downtownSTL.lat, downtownSTL.lng);
+        const distance = calculateDistance(loc.lat!, loc.lng!, downtownSTL.lat, downtownSTL.lng);
         return { ...loc, distance };
       }).sort((a, b) => a.distance - b.distance);
       
-      console.log(`🎯 Showing ${finalLocations.length} locations within 100 miles of downtown St. Louis`);
+      // Add locations without coordinates at the end
+      const locationsWithoutValidCoords = finalLocations.filter(loc => {
+        const hasValidCoords = loc.lat !== undefined && loc.lat !== null && loc.lat !== 0 && 
+                               loc.lng !== undefined && loc.lng !== null && loc.lng !== 0 &&
+                               !loc.needsGeocoding;
+        return !hasValidCoords;
+      }).map(loc => ({ ...loc, distance: Infinity }));
+      
+      finalLocations = [...locationsWithValidCoords, ...locationsWithoutValidCoords];
+      
+      console.log(`🎯 Showing ${finalLocations.length} locations (${locationsWithValidCoords.length} within 100 miles of downtown St. Louis, ${locationsWithoutValidCoords.length} without coordinates)`);
     } else {
       console.log(`🌎 Outside St. Louis area, showing general Missouri locations`);
       
       // For other areas, calculate distance from user location and sort by proximity
+      // Include all locations, but prioritize those with coordinates
       finalLocations = finalLocations.map(loc => {
-        const distance = calculateDistance(loc.lat, loc.lng, userLat, userLng);
+        const hasValidCoords = loc.lat !== undefined && loc.lat !== null && loc.lat !== 0 && 
+                               loc.lng !== undefined && loc.lng !== null && loc.lng !== 0 &&
+                               !loc.needsGeocoding;
+        const distance = hasValidCoords
+          ? calculateDistance(loc.lat!, loc.lng!, userLat, userLng)
+          : Infinity;
         return { ...loc, distance };
       }).sort((a, b) => a.distance - b.distance);
       
-      // Limit to 500 closest locations for performance
-      if (finalLocations.length > 500) {
-        console.log(`🎯 Prioritizing 500 closest locations to user position`);
-        finalLocations = finalLocations.slice(0, 500);
-      }
+      // Don't limit - show all locations (frontend will handle display)
+      console.log(`🎯 Showing all ${finalLocations.length} locations (sorted by distance, locations without coordinates at end)`);
     }
   }
   
@@ -476,7 +741,7 @@ async function parseCSV(csvText: string, centerLat?: string, centerLng?: string,
     console.log(`- Locations with existing coordinates: ${rowsWithCoordinates}`);
     console.log(`- Locations successfully geocoded: ${geocodedCount}`);
     console.log(`- Locations failed to geocode: ${failedGeocodingCount}`);
-    console.log(`- Total valid locations with coordinates: ${finalLocations.length}`);
+    console.log(`- Total locations: ${finalLocations.length} (${locationsWithCoords.length} with coordinates for map, ${locationsWithoutCoords.length} without coordinates for sidebar)`);
     console.log(`- Rows with DMM coordinates: ${rowsWithDMMCoords}`);
     console.log(`- Rows with decimal coordinates: ${rowsWithDecimalCoords}`);
     console.log(`- Rows without coordinates: ${processedRows - rowsWithDMMCoords - rowsWithDecimalCoords}`);
