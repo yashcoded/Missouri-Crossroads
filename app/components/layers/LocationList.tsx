@@ -1,5 +1,5 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 export interface LocationData {
   id: string;
@@ -54,13 +54,35 @@ export default function LocationList({
   const isRight = position === 'right';
   const [collapsed, setCollapsed] = useState<boolean>(defaultCollapsed);
 
+  // Collapse the location list when a details view is opened elsewhere (for example
+  // when the map popup dispatches a global event). This lets the details overlay
+  // take focus without the list overlapping it.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      // only collapse if currently expanded
+      setCollapsed(prev => {
+        if (!prev) return true;
+        return prev;
+      });
+    };
+
+    // Common event names we might listen for from the popup/details button.
+    window.addEventListener('open-location-details', handler);
+    window.addEventListener('location-details-opened', handler);
+
+    return () => {
+      window.removeEventListener('open-location-details', handler);
+      window.removeEventListener('location-details-opened', handler);
+    };
+  }, []);
+
   // Choose positioning: fixed (default) or absolute when inline inside a container
   const posClass = inline
     ? `absolute ${isRight ? 'top-4 right-4' : 'top-4 left-4'}`
     : `fixed top-20 ${isRight ? 'right-4' : 'left-4'}`;
 
-  // When collapsed, override width to a small handle that fits the button
-  const asideWidthClass = collapsed ? 'w-28' : width;
+  // When collapsed, override width so the handle is wide enough to show the label
+  const asideWidthClass = collapsed ? 'w-40' : width;
 
   return (
     <>
@@ -75,10 +97,16 @@ export default function LocationList({
 
       <aside
         aria-label="Location list"
-        className={`${posClass} ${asideWidthClass} max-h-[75vh] bg-white/95 backdrop-blur-sm border border-gray-200 rounded-lg shadow-xl z-50`}
+        className={`${posClass} ${asideWidthClass} max-h-[75vh] bg-white/95 backdrop-blur-sm ${collapsed ? 'border-0' : 'border border-gray-200'} rounded-lg shadow-xl z-50 overflow-hidden`}
       >
         {/* Header with collapse control */}
-        <div className="flex items-center justify-between px-3 py-2 border-b border-gray-100 bg-gradient-to-r from-white to-slate-50">
+        <div
+          className={
+            collapsed
+              ? 'flex items-center justify-between px-0 py-0'
+              : 'flex items-center justify-between px-3 py-2 border-b border-gray-100 bg-gradient-to-r from-white to-slate-50'
+          }
+        >
           {!collapsed ? (
             <div>
               <h4 className="text-sm font-semibold text-slate-700">
@@ -89,17 +117,55 @@ export default function LocationList({
               </p>
             </div>
           ) : (
-            <div className="w-full flex items-center justify-center">
-              <button
-                onClick={() => setCollapsed(false)}
-                className="text-xs font-medium text-slate-700 bg-white/0 px-2 py-1 rounded-md hover:bg-gray-100"
-              >
-                View List
-              </button>
+            <div className="w-full">
+              {/* Put the View List button and the chevron inside a single bordered container */}
+              <div className="flex items-stretch border-2 border-blue-300 rounded-lg overflow-hidden">
+                <button
+                  onClick={() => setCollapsed(false)}
+                  aria-label="Open location list"
+                  className="flex-1 text-left px-4 h-12 text-base font-medium text-gray-800 bg-white focus:ring-4 focus:ring-blue-200 focus:border-blue-500 outline-none transition-all duration-150 hover:bg-gray-50 flex items-center"
+                >
+                  <span className="mx-auto">View List</span>
+                </button>
+
+                {/* Chevron stays inside the same bordered container so the border surrounds both */}
+                <button
+                  aria-expanded={!collapsed}
+                  title={collapsed ? 'Expand locations' : 'Collapse locations'}
+                  onClick={() => setCollapsed(s => !s)}
+                  className="w-12 h-12 flex items-center justify-center bg-white hover:bg-gray-50"
+                >
+                  {isRight ? (
+                    <svg
+                      className="w-4 h-4 text-slate-700"
+                      viewBox="0 0 20 20"
+                      fill="currentColor"
+                    >
+                      <path
+                        fillRule="evenodd"
+                        d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z"
+                        clipRule="evenodd"
+                      />
+                    </svg>
+                  ) : (
+                    <svg
+                      className="w-4 h-4 text-slate-700"
+                      viewBox="0 0 20 20"
+                      fill="currentColor"
+                    >
+                      <path
+                        fillRule="evenodd"
+                        d="M12.707 14.707a1 1 0 01-1.414-1.414L13.586 10l-2.293-2.293a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4z"
+                        clipRule="evenodd"
+                      />
+                    </svg>
+                  )}
+                </button>
+              </div>
             </div>
           )}
 
-          {collapsible && (
+          {collapsible && !collapsed && (
             <button
               aria-expanded={!collapsed}
               title={collapsed ? 'Expand locations' : 'Collapse locations'}
