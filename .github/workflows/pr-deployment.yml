@@ -173,6 +173,13 @@ jobs:
           MAX_ATTEMPTS=$((TIMEOUT / SLEEP_INTERVAL))
           ATTEMPT=0
           
+          AWS_KEY="${AWS_ACCESS_KEY_ID:-${AMPLIFY_AWS_ACCESS_KEY_ID:-}}"
+          AWS_SECRET="${AWS_SECRET_ACCESS_KEY:-${AMPLIFY_AWS_SECRET_ACCESS_KEY:-}}"
+          AWS_REGION_EFFECTIVE="${AWS_REGION:-${AMPLIFY_AWS_REGION:-us-east-2}}"
+          AMPLIFY_APP_ID_EFFECTIVE="${AMPLIFY_APP_ID:-}"
+          AMPLIFY_BRANCH_PREFIX_EFFECTIVE="${AMPLIFY_BRANCH_PREFIX:-pr-}"
+          AWS_READY="false"
+
           while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
             echo ""
             echo "🔍 Checking for Amplify status (attempt $((ATTEMPT + 1))/$MAX_ATTEMPTS, ${ELAPSED}s elapsed)..."
@@ -200,6 +207,68 @@ jobs:
               
               FOUND="true"
               break
+            fi
+
+            if [ "$FOUND" != "true" ] && [ -n "$AMPLIFY_APP_ID_EFFECTIVE" ] && [ -n "$AWS_KEY" ] && [ -n "$AWS_SECRET" ]; then
+              if [ "$AWS_READY" != "true" ]; then
+                export AWS_ACCESS_KEY_ID="$AWS_KEY"
+                export AWS_SECRET_ACCESS_KEY="$AWS_SECRET"
+                export AWS_DEFAULT_REGION="$AWS_REGION_EFFECTIVE"
+                AWS_READY="true"
+              fi
+
+              if command -v aws >/dev/null 2>&1; then
+                BRANCH_NAME="${AMPLIFY_BRANCH_PREFIX_EFFECTIVE}${{ steps.pr-info.outputs.pr_number }}"
+                JOB_JSON=$(aws amplify list-jobs --app-id "$AMPLIFY_APP_ID_EFFECTIVE" --branch-name "$BRANCH_NAME" --max-items 1 2>/dev/null || echo "")
+                JOB_STATUS=$(echo "$JOB_JSON" | jq -r '.jobSummaries[0].status // empty')
+                JOB_REASON=$(echo "$JOB_JSON" | jq -r '.jobSummaries[0].statusReason // empty')
+
+                if [ -n "$JOB_STATUS" ] && [ "$JOB_STATUS" != "null" ]; then
+                  BRANCH_INFO=$(aws amplify list-branches --app-id "$AMPLIFY_APP_ID_EFFECTIVE" --query "branches[?branchName=='$BRANCH_NAME'] | [0]" --output json 2>/dev/null || echo "")
+                  DEPLOYMENT_URL=$(echo "$BRANCH_INFO" | jq -r '.webUrl // empty')
+                  if [ -z "$DEPLOYMENT_URL" ] || [ "$DEPLOYMENT_URL" == "null" ]; then
+                    DEFAULT_DOMAIN=$(echo "$BRANCH_INFO" | jq -r '.domainName // empty')
+                    if [ -n "$DEFAULT_DOMAIN" ] && [ "$DEFAULT_DOMAIN" != "null" ]; then
+                      DEPLOYMENT_URL="https://$DEFAULT_DOMAIN"
+                    else
+                      APP_DEFAULT_DOMAIN=$(aws amplify get-app --app-id "$AMPLIFY_APP_ID_EFFECTIVE" --query 'app.defaultDomain' --output text 2>/dev/null || echo "")
+                      if [ -n "$APP_DEFAULT_DOMAIN" ] && [ "$APP_DEFAULT_DOMAIN" != "None" ]; then
+                        DEPLOYMENT_URL="https://${BRANCH_NAME}.${APP_DEFAULT_DOMAIN}"
+                      fi
+                    fi
+                  fi
+
+                  case "$JOB_STATUS" in
+                    "SUCCEED")
+                      STATE="success"
+                      ;;
+                    "FAILED"|"CANCELLED")
+                      STATE="failure"
+                      ;;
+                    "PENDING"|"RUNNING")
+                      STATE="pending"
+                      ;;
+                    *)
+                      STATE="pending"
+                      ;;
+                  esac
+
+                  echo "✅ Found Amplify job via AWS API!"
+                  echo "   Branch: $BRANCH_NAME"
+                  echo "   Job status: $JOB_STATUS"
+                  if [ -n "$JOB_REASON" ] && [ "$JOB_REASON" != "null" ]; then
+                    echo "   Status reason: $JOB_REASON"
+                  fi
+                  if [ -n "$DEPLOYMENT_URL" ]; then
+                    echo "   URL: $DEPLOYMENT_URL"
+                  fi
+
+                  FOUND="true"
+                  break
+                fi
+              else
+                echo "⚠️ AWS CLI not available on runner; skipping direct Amplify API polling."
+              fi
             fi
             
             # If we're past 2 minutes and still no status, provide helpful message
@@ -236,7 +305,49 @@ jobs:
           echo "found=$FOUND" >> $GITHUB_OUTPUT
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AMPLIFY_AWS_ACCESS_KEY_ID: ${{ secrets.AMPLIFY_AWS_ACCESS_KEY_ID }}
+          AMPLIFY_AWS_SECRET_ACCESS_KEY: ${{ secrets.AMPLIFY_AWS_SECRET_ACCESS_KEY }}
+          AMPLIFY_APP_ID: ${{ secrets.AMPLIFY_APP_ID }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          AMPLIFY_AWS_REGION: ${{ vars.AMPLIFY_AWS_REGION }}
+          AMPLIFY_BRANCH_PREFIX: ${{ vars.AMPLIFY_BRANCH_PREFIX }}
         continue-on-error: true
+
+      - name: Publish fallback commit status
+        if: github.event.action != 'closed' && steps.poll-amplify.outputs.found == 'true'
+        run: |
+          STATE="${{ steps.poll-amplify.outputs.state }}"
+          TARGET_URL="${{ steps.poll-amplify.outputs.deployment_url }}"
+
+          case "$STATE" in
+            "success")
+              STATUS_STATE="success"
+              DESC="Preview available on AWS Amplify"
+              ;;
+            "failure"|"error")
+              STATUS_STATE="failure"
+              DESC="AWS Amplify deployment failed"
+              ;;
+            *)
+              STATUS_STATE="pending"
+              DESC="AWS Amplify deployment in progress"
+              ;;
+          esac
+
+          TARGET_URL="${TARGET_URL:-https://console.aws.amazon.com/amplify}"
+
+          echo "Setting commit status: $STATUS_STATE ($DESC)"
+
+          gh api repos/${{ github.repository }}/statuses/${{ steps.pr-info.outputs.pr_sha }} \
+            -X POST \
+            -f state="$STATUS_STATE" \
+            -f context="AWS Amplify (fallback)" \
+            -f description="$DESC" \
+            -f target_url="$TARGET_URL"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       
       - name: Create GitHub deployment
         if: github.event.action != 'closed'
