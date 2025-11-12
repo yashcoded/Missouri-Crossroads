@@ -346,6 +346,15 @@ jobs:
             -f context="AWS Amplify (fallback)" \
             -f description="$DESC" \
             -f target_url="$TARGET_URL"
+
+          echo "Setting deployment success context for PR visibility"
+
+          gh api repos/${{ github.repository }}/statuses/${{ steps.pr-info.outputs.pr_sha }} \
+            -X POST \
+            -f state="$STATUS_STATE" \
+            -f context="AWS Amplify Success" \
+            -f description="$DESC" \
+            -f target_url="$TARGET_URL"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       
