@@ -215,6 +215,7 @@ jobs:
                 export AWS_SECRET_ACCESS_KEY="$AWS_SECRET"
                 export AWS_DEFAULT_REGION="$AWS_REGION_EFFECTIVE"
                 AWS_READY="true"
+                echo "🔧 AWS credentials configured for API access"
               fi
 
               if command -v aws >/dev/null 2>&1; then
@@ -222,16 +223,41 @@ jobs:
                 PR_BRANCH_NAME="${{ steps.pr-info.outputs.pr_branch }}"
                 PR_PREVIEW_BRANCH_NAME="${AMPLIFY_BRANCH_PREFIX_EFFECTIVE}${{ steps.pr-info.outputs.pr_number }}"
                 
+                if [ $ATTEMPT -eq 1 ] || [ $((ATTEMPT % 5)) -eq 0 ]; then
+                  echo "🔍 Querying AWS Amplify API for branch: $PR_BRANCH_NAME (or $PR_PREVIEW_BRANCH_NAME)"
+                fi
+                
                 # Try PR branch name first
                 BRANCH_NAME="$PR_BRANCH_NAME"
-                JOB_JSON=$(aws amplify list-jobs --app-id "$AMPLIFY_APP_ID_EFFECTIVE" --branch-name "$BRANCH_NAME" --max-items 1 2>/dev/null || echo "")
-                JOB_STATUS=$(echo "$JOB_JSON" | jq -r '.jobSummaries[0].status // empty')
+                JOB_JSON=$(aws amplify list-jobs --app-id "$AMPLIFY_APP_ID_EFFECTIVE" --branch-name "$BRANCH_NAME" --region "$AWS_REGION_EFFECTIVE" --max-items 1 2>&1)
+                JOB_STATUS=$(echo "$JOB_JSON" | jq -r '.jobSummaries[0].status // empty' 2>/dev/null || echo "")
+                
+                # Debug: Log AWS API response
+                if [ $ATTEMPT -eq 1 ] || [ $((ATTEMPT % 5)) -eq 0 ]; then
+                  if [ -n "$JOB_STATUS" ] && [ "$JOB_STATUS" != "null" ] && [ "$JOB_STATUS" != "" ]; then
+                    echo "✅ Found job for branch '$BRANCH_NAME': $JOB_STATUS"
+                  else
+                    echo "⚠️  No job found for branch '$BRANCH_NAME', trying PR preview pattern..."
+                  fi
+                fi
                 
                 # If not found, try PR preview branch pattern
                 if [ -z "$JOB_STATUS" ] || [ "$JOB_STATUS" == "null" ] || [ "$JOB_STATUS" == "" ]; then
                   BRANCH_NAME="$PR_PREVIEW_BRANCH_NAME"
-                  JOB_JSON=$(aws amplify list-jobs --app-id "$AMPLIFY_APP_ID_EFFECTIVE" --branch-name "$BRANCH_NAME" --max-items 1 2>/dev/null || echo "")
-                  JOB_STATUS=$(echo "$JOB_JSON" | jq -r '.jobSummaries[0].status // empty')
+                  JOB_JSON=$(aws amplify list-jobs --app-id "$AMPLIFY_APP_ID_EFFECTIVE" --branch-name "$BRANCH_NAME" --region "$AWS_REGION_EFFECTIVE" --max-items 1 2>&1)
+                  JOB_STATUS=$(echo "$JOB_JSON" | jq -r '.jobSummaries[0].status // empty' 2>/dev/null || echo "")
+                  
+                  if [ $ATTEMPT -eq 1 ] || [ $((ATTEMPT % 5)) -eq 0 ]; then
+                    if [ -n "$JOB_STATUS" ] && [ "$JOB_STATUS" != "null" ] && [ "$JOB_STATUS" != "" ]; then
+                      echo "✅ Found job for branch '$BRANCH_NAME': $JOB_STATUS"
+                    else
+                      echo "⚠️  No job found for branch '$BRANCH_NAME' either"
+                      # Show error if AWS API call failed
+                      if echo "$JOB_JSON" | grep -q "error\|Error\|ERROR"; then
+                        echo "❌ AWS API error: $(echo "$JOB_JSON" | head -3)"
+                      fi
+                    fi
+                  fi
                 fi
                 
                 JOB_REASON=$(echo "$JOB_JSON" | jq -r '.jobSummaries[0].statusReason // empty')
