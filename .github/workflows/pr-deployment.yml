@@ -13,7 +13,8 @@ jobs:
       contents: read
       deployments: write
       pull-requests: write
-      checks: read
+      checks: write
+      statuses: write
     if: github.event_name == 'status'
     
     steps:
@@ -135,7 +136,8 @@ jobs:
       contents: read
       deployments: write
       pull-requests: write
-      checks: read
+      checks: write
+      statuses: write
     if: github.event_name == 'pull_request'
     
     steps:
