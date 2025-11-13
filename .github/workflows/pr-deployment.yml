@@ -582,37 +582,72 @@ jobs:
           AMPLIFY_AWS_REGION: ${{ vars.AMPLIFY_AWS_REGION }}
       
       - name: Comment PR with deployment link
-        if: steps.create-deployment.outputs.deployment_id != '' && steps.poll-amplify.outputs.found == 'true' && steps.poll-amplify.outputs.deployment_url != ''
+        if: steps.create-deployment.outputs.deployment_id != '' && steps.poll-amplify.outputs.found == 'true'
         continue-on-error: true
         run: |
           DEPLOYMENT_URL="${{ steps.poll-amplify.outputs.deployment_url }}"
+          FOUND="${{ steps.poll-amplify.outputs.found }}"
+          PR_BRANCH_NAME="${{ steps.pr-info.outputs.pr_branch }}"
           
-          COMMENT="## 🚀 Preview Deployment Available
+          # If URL is empty but deployment was found, try to construct it
+          if [ -z "$DEPLOYMENT_URL" ] && [ "$FOUND" == "true" ]; then
+            echo "⚠️  Deployment URL is empty, attempting to construct from branch info..."
+            export AWS_ACCESS_KEY_ID="${AWS_ACCESS_KEY_ID:-${AMPLIFY_AWS_ACCESS_KEY_ID:-}}"
+            export AWS_SECRET_ACCESS_KEY="${AWS_SECRET_ACCESS_KEY:-${AMPLIFY_AWS_SECRET_ACCESS_KEY:-}}"
+            export AWS_DEFAULT_REGION="${AWS_REGION:-${AMPLIFY_AWS_REGION:-us-east-2}}"
+            AMPLIFY_APP_ID_EFFECTIVE="${AMPLIFY_APP_ID:-}"
+            
+            if [ -n "$AMPLIFY_APP_ID_EFFECTIVE" ] && [ -n "$AWS_ACCESS_KEY_ID" ] && [ -n "$AWS_SECRET_ACCESS_KEY" ] && command -v aws >/dev/null 2>&1; then
+              # Try to get branch info and construct URL
+              BRANCH_INFO=$(aws amplify get-branch --app-id "$AMPLIFY_APP_ID_EFFECTIVE" --branch-name "$PR_BRANCH_NAME" --region "$AWS_DEFAULT_REGION" --query 'branch.{DisplayName:displayName}' --output json 2>/dev/null || echo "")
+              BRANCH_DISPLAY_NAME=$(echo "$BRANCH_INFO" | jq -r '.DisplayName // empty' 2>/dev/null || echo "")
+              APP_DEFAULT_DOMAIN=$(aws amplify get-app --app-id "$AMPLIFY_APP_ID_EFFECTIVE" --region "$AWS_DEFAULT_REGION" --query 'app.defaultDomain' --output text 2>/dev/null || echo "")
+              
+              if [ -n "$BRANCH_DISPLAY_NAME" ] && [ -n "$APP_DEFAULT_DOMAIN" ] && [ "$APP_DEFAULT_DOMAIN" != "None" ]; then
+                DEPLOYMENT_URL="https://${BRANCH_DISPLAY_NAME}.${APP_DEFAULT_DOMAIN}"
+                echo "✅ Constructed deployment URL: $DEPLOYMENT_URL"
+              fi
+            fi
+          fi
           
-          Your PR has been deployed to AWS Amplify!
-          
-          👉 **[View Preview]($DEPLOYMENT_URL)**
-          
-          This deployment will automatically update on each push to this PR.
-          "
-          
-          # Check if bot has already commented
-          EXISTING_COMMENT=$(gh api repos/${{ github.repository }}/issues/${{ steps.pr-info.outputs.pr_number }}/comments \
-            --jq '[.[] | select(.user.login == "github-actions[bot]" and (.body | contains("Preview Deployment"))) | .id] | .[0]')
-          
-          if [ -n "$EXISTING_COMMENT" ] && [ "$EXISTING_COMMENT" != "null" ]; then
-            echo "Updating existing comment (ID: $EXISTING_COMMENT)"
-            gh api repos/${{ github.repository }}/issues/comments/$EXISTING_COMMENT \
-              -X PATCH \
-              -f body="$COMMENT"
+          # Only post comment if we have a deployment URL
+          if [ -n "$DEPLOYMENT_URL" ]; then
+            COMMENT="## 🚀 Preview Deployment Available
+            
+            Your PR has been deployed to AWS Amplify!
+            
+            👉 **[View Preview]($DEPLOYMENT_URL)**
+            
+            This deployment will automatically update on each push to this PR.
+            "
+            
+            # Check if bot has already commented
+            EXISTING_COMMENT=$(gh api repos/${{ github.repository }}/issues/${{ steps.pr-info.outputs.pr_number }}/comments \
+              --jq '[.[] | select(.user.login == "github-actions[bot]" and (.body | contains("Preview Deployment"))) | .id] | .[0]')
+            
+            if [ -n "$EXISTING_COMMENT" ] && [ "$EXISTING_COMMENT" != "null" ]; then
+              echo "Updating existing comment (ID: $EXISTING_COMMENT)"
+              gh api repos/${{ github.repository }}/issues/comments/$EXISTING_COMMENT \
+                -X PATCH \
+                -f body="$COMMENT"
+            else
+              echo "Creating new comment"
+              gh api repos/${{ github.repository }}/issues/${{ steps.pr-info.outputs.pr_number }}/comments \
+                -X POST \
+                -f body="$COMMENT"
+            fi
           else
-            echo "Creating new comment"
-            gh api repos/${{ github.repository }}/issues/${{ steps.pr-info.outputs.pr_number }}/comments \
-              -X POST \
-              -f body="$COMMENT"
+            echo "⚠️  Deployment URL not available, skipping PR comment"
           fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AMPLIFY_AWS_ACCESS_KEY_ID: ${{ secrets.AMPLIFY_AWS_ACCESS_KEY_ID }}
+          AMPLIFY_AWS_SECRET_ACCESS_KEY: ${{ secrets.AMPLIFY_AWS_SECRET_ACCESS_KEY }}
+          AMPLIFY_APP_ID: ${{ secrets.AMPLIFY_APP_ID }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          AMPLIFY_AWS_REGION: ${{ vars.AMPLIFY_AWS_REGION }}
       
       - name: Comment PR if Amplify not found
         if: steps.create-deployment.outputs.deployment_id != '' && steps.poll-amplify.outputs.found != 'true'
