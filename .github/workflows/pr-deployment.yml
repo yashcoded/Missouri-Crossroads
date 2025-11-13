@@ -500,10 +500,39 @@ jobs:
           DEPLOYMENT_ID="${{ steps.create-deployment.outputs.deployment_id }}"
           AMPLIFY_URL="${{ steps.poll-amplify.outputs.deployment_url }}"
           STATE="${{ steps.poll-amplify.outputs.state }}"
+          FOUND="${{ steps.poll-amplify.outputs.found }}"
           
           # Set defaults if outputs are empty
           AMPLIFY_URL="${AMPLIFY_URL:-}"
           STATE="${STATE:-pending}"
+          FOUND="${FOUND:-false}"
+          
+          echo "Deployment ID: $DEPLOYMENT_ID"
+          echo "Amplify URL: ${AMPLIFY_URL:-(empty)}"
+          echo "State: $STATE"
+          echo "Found: $FOUND"
+          
+          # If URL is empty but deployment was found, try to construct it
+          if [ -z "$AMPLIFY_URL" ] && [ "$FOUND" == "true" ]; then
+            echo "⚠️  Deployment URL is empty, attempting to construct from branch info..."
+            export AWS_ACCESS_KEY_ID="${AWS_ACCESS_KEY_ID:-${AMPLIFY_AWS_ACCESS_KEY_ID:-}}"
+            export AWS_SECRET_ACCESS_KEY="${AWS_SECRET_ACCESS_KEY:-${AMPLIFY_AWS_SECRET_ACCESS_KEY:-}}"
+            export AWS_DEFAULT_REGION="${AWS_REGION:-${AMPLIFY_AWS_REGION:-us-east-2}}"
+            AMPLIFY_APP_ID_EFFECTIVE="${AMPLIFY_APP_ID:-}"
+            PR_BRANCH_NAME="${{ steps.pr-info.outputs.pr_branch }}"
+            
+            if [ -n "$AMPLIFY_APP_ID_EFFECTIVE" ] && [ -n "$AWS_ACCESS_KEY_ID" ] && [ -n "$AWS_SECRET_ACCESS_KEY" ] && command -v aws >/dev/null 2>&1; then
+              # Try to get branch info and construct URL
+              BRANCH_INFO=$(aws amplify get-branch --app-id "$AMPLIFY_APP_ID_EFFECTIVE" --branch-name "$PR_BRANCH_NAME" --region "$AWS_DEFAULT_REGION" --query 'branch.{DisplayName:displayName}' --output json 2>/dev/null || echo "")
+              BRANCH_DISPLAY_NAME=$(echo "$BRANCH_INFO" | jq -r '.DisplayName // empty' 2>/dev/null || echo "")
+              APP_DEFAULT_DOMAIN=$(aws amplify get-app --app-id "$AMPLIFY_APP_ID_EFFECTIVE" --region "$AWS_DEFAULT_REGION" --query 'app.defaultDomain' --output text 2>/dev/null || echo "")
+              
+              if [ -n "$BRANCH_DISPLAY_NAME" ] && [ -n "$APP_DEFAULT_DOMAIN" ] && [ "$APP_DEFAULT_DOMAIN" != "None" ]; then
+                AMPLIFY_URL="https://${BRANCH_DISPLAY_NAME}.${APP_DEFAULT_DOMAIN}"
+                echo "✅ Constructed deployment URL: $AMPLIFY_URL"
+              fi
+            fi
+          fi
           
           # Map status to deployment state
           case "$STATE" in
@@ -526,14 +555,31 @@ jobs:
           esac
           
           echo "Updating deployment status: $DEPLOY_STATE"
+          echo "Environment URL: ${AMPLIFY_URL:-(none)}"
           
-          gh api repos/${{ github.repository }}/deployments/$DEPLOYMENT_ID/statuses \
-            -X POST \
-            -f state="$DEPLOY_STATE" \
-            -f description="$DESC" \
-            -f environment_url="$AMPLIFY_URL"
+          # Update deployment status with URL if available
+          if [ -n "$AMPLIFY_URL" ]; then
+            gh api repos/${{ github.repository }}/deployments/$DEPLOYMENT_ID/statuses \
+              -X POST \
+              -f state="$DEPLOY_STATE" \
+              -f description="$DESC" \
+              -f environment_url="$AMPLIFY_URL"
+          else
+            gh api repos/${{ github.repository }}/deployments/$DEPLOYMENT_ID/statuses \
+              -X POST \
+              -f state="$DEPLOY_STATE" \
+              -f description="$DESC"
+            echo "⚠️  Deployment URL not available, status updated without URL"
+          fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AMPLIFY_AWS_ACCESS_KEY_ID: ${{ secrets.AMPLIFY_AWS_ACCESS_KEY_ID }}
+          AMPLIFY_AWS_SECRET_ACCESS_KEY: ${{ secrets.AMPLIFY_AWS_SECRET_ACCESS_KEY }}
+          AMPLIFY_APP_ID: ${{ secrets.AMPLIFY_APP_ID }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          AMPLIFY_AWS_REGION: ${{ vars.AMPLIFY_AWS_REGION }}
       
       - name: Comment PR with deployment link
         if: steps.create-deployment.outputs.deployment_id != '' && steps.poll-amplify.outputs.found == 'true' && steps.poll-amplify.outputs.deployment_url != ''
