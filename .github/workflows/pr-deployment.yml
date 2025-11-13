@@ -13,7 +13,8 @@ jobs:
       contents: read
       deployments: write
       pull-requests: write
-      checks: read
+      checks: write
+      statuses: write
     if: github.event_name == 'status'
     
     steps:
@@ -135,7 +136,8 @@ jobs:
       contents: read
       deployments: write
       pull-requests: write
-      checks: read
+      checks: write
+      statuses: write
     if: github.event_name == 'pull_request'
     
     steps:
@@ -159,33 +161,167 @@ jobs:
         id: poll-amplify
         run: |
           echo "⏳ Waiting for AWS Amplify to deploy PR #${{ steps.pr-info.outputs.pr_number }}..."
+          echo "📝 Commit SHA: ${{ steps.pr-info.outputs.pr_sha }}"
           
-          TIMEOUT=300  # 5 minutes
+          # Initialize outputs (always set defaults)
+          FOUND="false"
+          DEPLOYMENT_URL=""
+          STATE="pending"
+          
+          # Increased timeout to 15 minutes (Amplify builds can take time)
+          TIMEOUT=900  # 15 minutes
           ELAPSED=0
-          SLEEP_INTERVAL=15
+          SLEEP_INTERVAL=20  # Check every 20 seconds
           MAX_ATTEMPTS=$((TIMEOUT / SLEEP_INTERVAL))
           ATTEMPT=0
           
+          AWS_KEY="${AWS_ACCESS_KEY_ID:-${AMPLIFY_AWS_ACCESS_KEY_ID:-}}"
+          AWS_SECRET="${AWS_SECRET_ACCESS_KEY:-${AMPLIFY_AWS_SECRET_ACCESS_KEY:-}}"
+          AWS_REGION_EFFECTIVE="${AWS_REGION:-${AMPLIFY_AWS_REGION:-us-east-2}}"
+          AMPLIFY_APP_ID_EFFECTIVE="${AMPLIFY_APP_ID:-}"
+          AMPLIFY_BRANCH_PREFIX_EFFECTIVE="${AMPLIFY_BRANCH_PREFIX:-pr-}"
+          AWS_READY="false"
+
           while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
-            echo "Checking for Amplify status (attempt $((ATTEMPT + 1))/$MAX_ATTEMPTS)..."
+            echo ""
+            echo "🔍 Checking for Amplify status (attempt $((ATTEMPT + 1))/$MAX_ATTEMPTS, ${ELAPSED}s elapsed)..."
             
             STATUSES=$(gh api repos/${{ github.repository }}/commits/${{ steps.pr-info.outputs.pr_sha }}/statuses 2>/dev/null || echo "[]")
             
-            # Look for Amplify status
-            AMPLIFY_STATUS=$(echo "$STATUSES" | jq -r '[.[] | select(.context | ascii_downcase | contains("amplify"))][0]')
+            # Debug: Show all status contexts
+            if [ $ATTEMPT -eq 0 ] || [ $((ATTEMPT % 3)) -eq 0 ]; then
+              echo "📋 Available status checks:"
+              echo "$STATUSES" | jq -r '.[] | "  - \(.context): \(.state)"' || echo "  (none found)"
+            fi
+            
+            # Look for Amplify status - try multiple patterns
+            AMPLIFY_STATUS=$(echo "$STATUSES" | jq -r '[.[] | select(.context | ascii_downcase | contains("amplify") or contains("aws") or contains("deploy"))][0]')
             
             if [ "$AMPLIFY_STATUS" != "null" ] && [ -n "$AMPLIFY_STATUS" ]; then
               DEPLOYMENT_URL=$(echo "$AMPLIFY_STATUS" | jq -r '.target_url // empty')
               STATE=$(echo "$AMPLIFY_STATUS" | jq -r '.state // "pending"')
+              CONTEXT=$(echo "$AMPLIFY_STATUS" | jq -r '.context // "unknown"')
               
-              echo "✅ Found Amplify deployment"
-              echo "URL: $DEPLOYMENT_URL"
-              echo "State: $STATE"
+              echo "✅ Found Amplify deployment!"
+              echo "   Context: $CONTEXT"
+              echo "   State: $STATE"
+              echo "   URL: $DEPLOYMENT_URL"
               
-              echo "deployment_url=$DEPLOYMENT_URL" >> $GITHUB_OUTPUT
-              echo "state=$STATE" >> $GITHUB_OUTPUT
-              echo "found=true" >> $GITHUB_OUTPUT
+              FOUND="true"
               break
+            fi
+
+            if [ "$FOUND" != "true" ] && [ -n "$AMPLIFY_APP_ID_EFFECTIVE" ] && [ -n "$AWS_KEY" ] && [ -n "$AWS_SECRET" ]; then
+              if [ "$AWS_READY" != "true" ]; then
+                export AWS_ACCESS_KEY_ID="$AWS_KEY"
+                export AWS_SECRET_ACCESS_KEY="$AWS_SECRET"
+                export AWS_DEFAULT_REGION="$AWS_REGION_EFFECTIVE"
+                AWS_READY="true"
+                echo "🔧 AWS credentials configured for API access"
+              fi
+
+              if command -v aws >/dev/null 2>&1; then
+                # Try actual PR branch name first (e.g., dev_1), then fall back to PR preview pattern (e.g., pr-2)
+                PR_BRANCH_NAME="${{ steps.pr-info.outputs.pr_branch }}"
+                PR_PREVIEW_BRANCH_NAME="${AMPLIFY_BRANCH_PREFIX_EFFECTIVE}${{ steps.pr-info.outputs.pr_number }}"
+                
+                if [ $ATTEMPT -eq 1 ] || [ $((ATTEMPT % 5)) -eq 0 ]; then
+                  echo "🔍 Querying AWS Amplify API for branch: $PR_BRANCH_NAME (or $PR_PREVIEW_BRANCH_NAME)"
+                fi
+                
+                # Try PR branch name first
+                BRANCH_NAME="$PR_BRANCH_NAME"
+                JOB_JSON=$(aws amplify list-jobs --app-id "$AMPLIFY_APP_ID_EFFECTIVE" --branch-name "$BRANCH_NAME" --region "$AWS_REGION_EFFECTIVE" --max-items 1 2>&1)
+                JOB_STATUS=$(echo "$JOB_JSON" | jq -r '.jobSummaries[0].status // empty' 2>/dev/null || echo "")
+                
+                # Debug: Log AWS API response
+                if [ $ATTEMPT -eq 1 ] || [ $((ATTEMPT % 5)) -eq 0 ]; then
+                  if [ -n "$JOB_STATUS" ] && [ "$JOB_STATUS" != "null" ] && [ "$JOB_STATUS" != "" ]; then
+                    echo "✅ Found job for branch '$BRANCH_NAME': $JOB_STATUS"
+                  else
+                    echo "⚠️  No job found for branch '$BRANCH_NAME', trying PR preview pattern..."
+                  fi
+                fi
+                
+                # If not found, try PR preview branch pattern
+                if [ -z "$JOB_STATUS" ] || [ "$JOB_STATUS" == "null" ] || [ "$JOB_STATUS" == "" ]; then
+                  BRANCH_NAME="$PR_PREVIEW_BRANCH_NAME"
+                  JOB_JSON=$(aws amplify list-jobs --app-id "$AMPLIFY_APP_ID_EFFECTIVE" --branch-name "$BRANCH_NAME" --region "$AWS_REGION_EFFECTIVE" --max-items 1 2>&1)
+                  JOB_STATUS=$(echo "$JOB_JSON" | jq -r '.jobSummaries[0].status // empty' 2>/dev/null || echo "")
+                  
+                  if [ $ATTEMPT -eq 1 ] || [ $((ATTEMPT % 5)) -eq 0 ]; then
+                    if [ -n "$JOB_STATUS" ] && [ "$JOB_STATUS" != "null" ] && [ "$JOB_STATUS" != "" ]; then
+                      echo "✅ Found job for branch '$BRANCH_NAME': $JOB_STATUS"
+                    else
+                      echo "⚠️  No job found for branch '$BRANCH_NAME' either"
+                      # Show error if AWS API call failed
+                      if echo "$JOB_JSON" | grep -q "error\|Error\|ERROR"; then
+                        echo "❌ AWS API error: $(echo "$JOB_JSON" | head -3)"
+                      fi
+                    fi
+                  fi
+                fi
+                
+                JOB_REASON=$(echo "$JOB_JSON" | jq -r '.jobSummaries[0].statusReason // empty')
+
+                if [ -n "$JOB_STATUS" ] && [ "$JOB_STATUS" != "null" ]; then
+                  BRANCH_INFO=$(aws amplify list-branches --app-id "$AMPLIFY_APP_ID_EFFECTIVE" --query "branches[?branchName=='$BRANCH_NAME'] | [0]" --output json 2>/dev/null || echo "")
+                  DEPLOYMENT_URL=$(echo "$BRANCH_INFO" | jq -r '.webUrl // empty')
+                  if [ -z "$DEPLOYMENT_URL" ] || [ "$DEPLOYMENT_URL" == "null" ]; then
+                    DEFAULT_DOMAIN=$(echo "$BRANCH_INFO" | jq -r '.domainName // empty')
+                    if [ -n "$DEFAULT_DOMAIN" ] && [ "$DEFAULT_DOMAIN" != "null" ]; then
+                      DEPLOYMENT_URL="https://$DEFAULT_DOMAIN"
+                    else
+                      APP_DEFAULT_DOMAIN=$(aws amplify get-app --app-id "$AMPLIFY_APP_ID_EFFECTIVE" --query 'app.defaultDomain' --output text 2>/dev/null || echo "")
+                      if [ -n "$APP_DEFAULT_DOMAIN" ] && [ "$APP_DEFAULT_DOMAIN" != "None" ]; then
+                        # Use displayName if available, otherwise use branchName
+                        BRANCH_DISPLAY_NAME=$(echo "$BRANCH_INFO" | jq -r '.displayName // empty')
+                        if [ -n "$BRANCH_DISPLAY_NAME" ] && [ "$BRANCH_DISPLAY_NAME" != "null" ]; then
+                          DEPLOYMENT_URL="https://${BRANCH_DISPLAY_NAME}.${APP_DEFAULT_DOMAIN}"
+                        else
+                          DEPLOYMENT_URL="https://${BRANCH_NAME}.${APP_DEFAULT_DOMAIN}"
+                        fi
+                      fi
+                    fi
+                  fi
+
+                  case "$JOB_STATUS" in
+                    "SUCCEED")
+                      STATE="success"
+                      ;;
+                    "FAILED"|"CANCELLED")
+                      STATE="failure"
+                      ;;
+                    "PENDING"|"RUNNING")
+                      STATE="pending"
+                      ;;
+                    *)
+                      STATE="pending"
+                      ;;
+                  esac
+
+                  echo "✅ Found Amplify job via AWS API!"
+                  echo "   Branch: $BRANCH_NAME"
+                  echo "   Job status: $JOB_STATUS"
+                  if [ -n "$JOB_REASON" ] && [ "$JOB_REASON" != "null" ]; then
+                    echo "   Status reason: $JOB_REASON"
+                  fi
+                  if [ -n "$DEPLOYMENT_URL" ]; then
+                    echo "   URL: $DEPLOYMENT_URL"
+                  fi
+
+                  FOUND="true"
+                  break
+                fi
+              else
+                echo "⚠️ AWS CLI not available on runner; skipping direct Amplify API polling."
+              fi
+            fi
+            
+            # If we're past 2 minutes and still no status, provide helpful message
+            if [ $ELAPSED -gt 120 ] && [ $((ATTEMPT % 6)) -eq 0 ]; then
+              echo "⏳ Still waiting... Amplify may be building the app."
+              echo "💡 Tip: Check AWS Amplify Console to ensure PR previews are enabled."
             fi
             
             sleep $SLEEP_INTERVAL
@@ -193,40 +329,143 @@ jobs:
             ATTEMPT=$((ATTEMPT + 1))
           done
           
-          if [ "${{ steps.poll-amplify.outputs.found }}" != "true" ]; then
-            echo "⏰ Timeout waiting for Amplify deployment"
-            echo "deployment_url=" >> $GITHUB_OUTPUT
-            echo "state=pending" >> $GITHUB_OUTPUT
-            echo "found=false" >> $GITHUB_OUTPUT
+          # If not found, log timeout message
+          if [ "$FOUND" != "true" ]; then
+            echo ""
+            echo "⏰ Timeout after ${TIMEOUT}s waiting for Amplify deployment"
+            echo ""
+            echo "🔍 Final status check results:"
+            STATUSES=$(gh api repos/${{ github.repository }}/commits/${{ steps.pr-info.outputs.pr_sha }}/statuses 2>/dev/null || echo "[]")
+            echo "$STATUSES" | jq -r '.[] | "  - \(.context): \(.state) (\(.description // "no description"))"' || echo "  (no status checks found)"
+            echo ""
+            echo "💡 Possible reasons:"
+            echo "   1. AWS Amplify PR previews may not be enabled"
+            echo "   2. Amplify build is still in progress (check AWS Console)"
+            echo "   3. Status check context name doesn't contain 'amplify'"
+            echo "   4. Amplify app may not be connected to this repository"
+            echo ""
+          fi
+          
+          # Always set outputs (even if not found)
+          echo "deployment_url=$DEPLOYMENT_URL" >> $GITHUB_OUTPUT
+          echo "state=$STATE" >> $GITHUB_OUTPUT
+          echo "found=$FOUND" >> $GITHUB_OUTPUT
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AMPLIFY_AWS_ACCESS_KEY_ID: ${{ secrets.AMPLIFY_AWS_ACCESS_KEY_ID }}
+          AMPLIFY_AWS_SECRET_ACCESS_KEY: ${{ secrets.AMPLIFY_AWS_SECRET_ACCESS_KEY }}
+          AMPLIFY_APP_ID: ${{ secrets.AMPLIFY_APP_ID }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          AMPLIFY_AWS_REGION: ${{ vars.AMPLIFY_AWS_REGION }}
+          AMPLIFY_BRANCH_PREFIX: ${{ vars.AMPLIFY_BRANCH_PREFIX }}
+        continue-on-error: true
+
+      - name: Publish fallback commit status
+        if: github.event.action != 'closed' && steps.poll-amplify.outputs.found == 'true'
+        run: |
+          STATE="${{ steps.poll-amplify.outputs.state }}"
+          TARGET_URL="${{ steps.poll-amplify.outputs.deployment_url }}"
+          COMMIT_SHA="${{ github.event.pull_request.head.sha }}"
+
+          case "$STATE" in
+            "success")
+              STATUS_STATE="success"
+              DESC="Preview available on AWS Amplify"
+              ;;
+            "failure"|"error")
+              STATUS_STATE="failure"
+              DESC="AWS Amplify deployment failed"
+              ;;
+            *)
+              STATUS_STATE="pending"
+              DESC="AWS Amplify deployment in progress"
+              ;;
+          esac
+
+          TARGET_URL="${TARGET_URL:-https://console.aws.amazon.com/amplify}"
+
+          echo "Setting commit status: $STATUS_STATE ($DESC)"
+          echo "Commit SHA: $COMMIT_SHA"
+
+          # Post commit status - use continue-on-error to avoid failing the workflow
+          if gh api repos/${{ github.repository }}/statuses/$COMMIT_SHA \
+            -X POST \
+            -f state="$STATUS_STATE" \
+            -f context="AWS Amplify (fallback)" \
+            -f description="$DESC" \
+            -f target_url="$TARGET_URL" 2>&1; then
+            echo "✅ Successfully posted commit status"
+          else
+            echo "⚠️ Failed to post commit status (this is non-blocking)"
+            echo "💡 Note: Commit status posting may be restricted by repository settings"
+          fi
+
+          # Only post second status if first one succeeded
+          if gh api repos/${{ github.repository }}/statuses/$COMMIT_SHA \
+            -X POST \
+            -f state="$STATUS_STATE" \
+            -f context="AWS Amplify Success" \
+            -f description="$DESC" \
+            -f target_url="$TARGET_URL" 2>&1; then
+            echo "✅ Successfully posted second commit status"
+          else
+            echo "⚠️ Failed to post second commit status (this is non-blocking)"
           fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         continue-on-error: true
       
       - name: Create GitHub deployment
-        if: github.event.action != 'closed' && steps.poll-amplify.outputs.found == 'true'
+        if: github.event.action != 'closed'
         id: create-deployment
         run: |
+          # Safely get outputs with defaults (handle empty values)
           AMPLIFY_URL="${{ steps.poll-amplify.outputs.deployment_url }}"
           STATE="${{ steps.poll-amplify.outputs.state }}"
+          FOUND="${{ steps.poll-amplify.outputs.found }}"
           ENVIRONMENT="pr-${{ steps.pr-info.outputs.pr_number }}"
+          
+          # Set defaults if outputs are empty
+          AMPLIFY_URL="${AMPLIFY_URL:-}"
+          STATE="${STATE:-pending}"
+          FOUND="${FOUND:-false}"
           
           echo "Creating deployment for PR #${{ steps.pr-info.outputs.pr_number }}"
           echo "Environment: $ENVIRONMENT"
-          echo "URL: $AMPLIFY_URL"
-          echo "State: $STATE"
+          echo "Amplify found: $FOUND"
+          
+          # If Amplify URL was found, use it; otherwise create a placeholder deployment
+          if [ "$FOUND" == "true" ] && [ -n "$AMPLIFY_URL" ]; then
+            echo "URL: $AMPLIFY_URL"
+            echo "State: $STATE"
+            DEPLOYMENT_URL="$AMPLIFY_URL"
+          else
+            echo "⚠️ Amplify deployment not found yet - creating placeholder deployment"
+            echo "   The deployment will be updated when Amplify status becomes available"
+            DEPLOYMENT_URL="https://console.aws.amazon.com/amplify"
+            STATE="pending"
+          fi
           
           # Check if deployment already exists
           EXISTING=$(gh api repos/${{ github.repository }}/deployments \
             --jq ".[] | select(.environment == \"$ENVIRONMENT\") | .id" 2>/dev/null | head -1)
           
           if [ -z "$EXISTING" ]; then
+            # Build description based on whether Amplify was found
+            if [ "$FOUND" != "true" ]; then
+              DESC="Preview deployment for PR #${{ steps.pr-info.outputs.pr_number }} (Amplify status pending)"
+            else
+              DESC="Preview deployment for PR #${{ steps.pr-info.outputs.pr_number }}"
+            fi
+            
             # Create new deployment with proper JSON types
             JSON_PAYLOAD=$(jq -n \
               --arg ref "${{ steps.pr-info.outputs.pr_sha }}" \
               --arg env "$ENVIRONMENT" \
-              --arg desc "Preview deployment for PR #${{ steps.pr-info.outputs.pr_number }}" \
-              --arg url "$AMPLIFY_URL" \
+              --arg desc "$DESC" \
+              --arg url "$DEPLOYMENT_URL" \
               --arg pr_num "${{ steps.pr-info.outputs.pr_number }}" \
               '{ref: $ref, environment: $env, auto_merge: false, required_contexts: [], description: $desc, payload: {url: $url, pr_number: $pr_num}}')
             
@@ -246,6 +485,11 @@ jobs:
           else
             echo "Deployment already exists: $EXISTING"
             echo "deployment_id=$EXISTING" >> $GITHUB_OUTPUT
+            
+            # Update existing deployment if we found Amplify URL
+            if [ "$FOUND" == "true" ] && [ -n "$AMPLIFY_URL" ]; then
+              echo "🔄 Updating existing deployment with Amplify URL"
+            fi
           fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -256,6 +500,39 @@ jobs:
           DEPLOYMENT_ID="${{ steps.create-deployment.outputs.deployment_id }}"
           AMPLIFY_URL="${{ steps.poll-amplify.outputs.deployment_url }}"
           STATE="${{ steps.poll-amplify.outputs.state }}"
+          FOUND="${{ steps.poll-amplify.outputs.found }}"
+          
+          # Set defaults if outputs are empty
+          AMPLIFY_URL="${AMPLIFY_URL:-}"
+          STATE="${STATE:-pending}"
+          FOUND="${FOUND:-false}"
+          
+          echo "Deployment ID: $DEPLOYMENT_ID"
+          echo "Amplify URL: ${AMPLIFY_URL:-(empty)}"
+          echo "State: $STATE"
+          echo "Found: $FOUND"
+          
+          # If URL is empty but deployment was found, try to construct it
+          if [ -z "$AMPLIFY_URL" ] && [ "$FOUND" == "true" ]; then
+            echo "⚠️  Deployment URL is empty, attempting to construct from branch info..."
+            export AWS_ACCESS_KEY_ID="${AWS_ACCESS_KEY_ID:-${AMPLIFY_AWS_ACCESS_KEY_ID:-}}"
+            export AWS_SECRET_ACCESS_KEY="${AWS_SECRET_ACCESS_KEY:-${AMPLIFY_AWS_SECRET_ACCESS_KEY:-}}"
+            export AWS_DEFAULT_REGION="${AWS_REGION:-${AMPLIFY_AWS_REGION:-us-east-2}}"
+            AMPLIFY_APP_ID_EFFECTIVE="${AMPLIFY_APP_ID:-}"
+            PR_BRANCH_NAME="${{ steps.pr-info.outputs.pr_branch }}"
+            
+            if [ -n "$AMPLIFY_APP_ID_EFFECTIVE" ] && [ -n "$AWS_ACCESS_KEY_ID" ] && [ -n "$AWS_SECRET_ACCESS_KEY" ] && command -v aws >/dev/null 2>&1; then
+              # Try to get branch info and construct URL
+              BRANCH_INFO=$(aws amplify get-branch --app-id "$AMPLIFY_APP_ID_EFFECTIVE" --branch-name "$PR_BRANCH_NAME" --region "$AWS_DEFAULT_REGION" --query 'branch.{DisplayName:displayName}' --output json 2>/dev/null || echo "")
+              BRANCH_DISPLAY_NAME=$(echo "$BRANCH_INFO" | jq -r '.DisplayName // empty' 2>/dev/null || echo "")
+              APP_DEFAULT_DOMAIN=$(aws amplify get-app --app-id "$AMPLIFY_APP_ID_EFFECTIVE" --region "$AWS_DEFAULT_REGION" --query 'app.defaultDomain' --output text 2>/dev/null || echo "")
+              
+              if [ -n "$BRANCH_DISPLAY_NAME" ] && [ -n "$APP_DEFAULT_DOMAIN" ] && [ "$APP_DEFAULT_DOMAIN" != "None" ]; then
+                AMPLIFY_URL="https://${BRANCH_DISPLAY_NAME}.${APP_DEFAULT_DOMAIN}"
+                echo "✅ Constructed deployment URL: $AMPLIFY_URL"
+              fi
+            fi
+          fi
           
           # Map status to deployment state
           case "$STATE" in
@@ -278,41 +555,122 @@ jobs:
           esac
           
           echo "Updating deployment status: $DEPLOY_STATE"
+          echo "Environment URL: ${AMPLIFY_URL:-(none)}"
           
-          gh api repos/${{ github.repository }}/deployments/$DEPLOYMENT_ID/statuses \
-            -X POST \
-            -f state="$DEPLOY_STATE" \
-            -f description="$DESC" \
-            -f environment_url="$AMPLIFY_URL"
+          # Update deployment status with URL if available
+          if [ -n "$AMPLIFY_URL" ]; then
+            gh api repos/${{ github.repository }}/deployments/$DEPLOYMENT_ID/statuses \
+              -X POST \
+              -f state="$DEPLOY_STATE" \
+              -f description="$DESC" \
+              -f environment_url="$AMPLIFY_URL"
+          else
+            gh api repos/${{ github.repository }}/deployments/$DEPLOYMENT_ID/statuses \
+              -X POST \
+              -f state="$DEPLOY_STATE" \
+              -f description="$DESC"
+            echo "⚠️  Deployment URL not available, status updated without URL"
+          fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AMPLIFY_AWS_ACCESS_KEY_ID: ${{ secrets.AMPLIFY_AWS_ACCESS_KEY_ID }}
+          AMPLIFY_AWS_SECRET_ACCESS_KEY: ${{ secrets.AMPLIFY_AWS_SECRET_ACCESS_KEY }}
+          AMPLIFY_APP_ID: ${{ secrets.AMPLIFY_APP_ID }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          AMPLIFY_AWS_REGION: ${{ vars.AMPLIFY_AWS_REGION }}
       
       - name: Comment PR with deployment link
-        if: steps.create-deployment.outputs.deployment_id != '' && steps.poll-amplify.outputs.deployment_url != ''
+        if: steps.create-deployment.outputs.deployment_id != '' && steps.poll-amplify.outputs.found == 'true'
         continue-on-error: true
         run: |
           DEPLOYMENT_URL="${{ steps.poll-amplify.outputs.deployment_url }}"
+          FOUND="${{ steps.poll-amplify.outputs.found }}"
+          PR_BRANCH_NAME="${{ steps.pr-info.outputs.pr_branch }}"
           
-          COMMENT="## 🚀 Preview Deployment Available
+          # If URL is empty but deployment was found, try to construct it
+          if [ -z "$DEPLOYMENT_URL" ] && [ "$FOUND" == "true" ]; then
+            echo "⚠️  Deployment URL is empty, attempting to construct from branch info..."
+            export AWS_ACCESS_KEY_ID="${AWS_ACCESS_KEY_ID:-${AMPLIFY_AWS_ACCESS_KEY_ID:-}}"
+            export AWS_SECRET_ACCESS_KEY="${AWS_SECRET_ACCESS_KEY:-${AMPLIFY_AWS_SECRET_ACCESS_KEY:-}}"
+            export AWS_DEFAULT_REGION="${AWS_REGION:-${AMPLIFY_AWS_REGION:-us-east-2}}"
+            AMPLIFY_APP_ID_EFFECTIVE="${AMPLIFY_APP_ID:-}"
+            
+            if [ -n "$AMPLIFY_APP_ID_EFFECTIVE" ] && [ -n "$AWS_ACCESS_KEY_ID" ] && [ -n "$AWS_SECRET_ACCESS_KEY" ] && command -v aws >/dev/null 2>&1; then
+              # Try to get branch info and construct URL
+              BRANCH_INFO=$(aws amplify get-branch --app-id "$AMPLIFY_APP_ID_EFFECTIVE" --branch-name "$PR_BRANCH_NAME" --region "$AWS_DEFAULT_REGION" --query 'branch.{DisplayName:displayName}' --output json 2>/dev/null || echo "")
+              BRANCH_DISPLAY_NAME=$(echo "$BRANCH_INFO" | jq -r '.DisplayName // empty' 2>/dev/null || echo "")
+              APP_DEFAULT_DOMAIN=$(aws amplify get-app --app-id "$AMPLIFY_APP_ID_EFFECTIVE" --region "$AWS_DEFAULT_REGION" --query 'app.defaultDomain' --output text 2>/dev/null || echo "")
+              
+              if [ -n "$BRANCH_DISPLAY_NAME" ] && [ -n "$APP_DEFAULT_DOMAIN" ] && [ "$APP_DEFAULT_DOMAIN" != "None" ]; then
+                DEPLOYMENT_URL="https://${BRANCH_DISPLAY_NAME}.${APP_DEFAULT_DOMAIN}"
+                echo "✅ Constructed deployment URL: $DEPLOYMENT_URL"
+              fi
+            fi
+          fi
           
-          Your PR has been deployed to AWS Amplify!
+          # Only post comment if we have a deployment URL
+          if [ -n "$DEPLOYMENT_URL" ]; then
+            COMMENT="## 🚀 Preview Deployment Available
+            
+            Your PR has been deployed to AWS Amplify!
+            
+            👉 **[View Preview]($DEPLOYMENT_URL)**
+            
+            This deployment will automatically update on each push to this PR.
+            "
+            
+            # Check if bot has already commented
+            EXISTING_COMMENT=$(gh api repos/${{ github.repository }}/issues/${{ steps.pr-info.outputs.pr_number }}/comments \
+              --jq '[.[] | select(.user.login == "github-actions[bot]" and (.body | contains("Preview Deployment"))) | .id] | .[0]')
+            
+            if [ -n "$EXISTING_COMMENT" ] && [ "$EXISTING_COMMENT" != "null" ]; then
+              echo "Updating existing comment (ID: $EXISTING_COMMENT)"
+              gh api repos/${{ github.repository }}/issues/comments/$EXISTING_COMMENT \
+                -X PATCH \
+                -f body="$COMMENT"
+            else
+              echo "Creating new comment"
+              gh api repos/${{ github.repository }}/issues/${{ steps.pr-info.outputs.pr_number }}/comments \
+                -X POST \
+                -f body="$COMMENT"
+            fi
+          else
+            echo "⚠️  Deployment URL not available, skipping PR comment"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AMPLIFY_AWS_ACCESS_KEY_ID: ${{ secrets.AMPLIFY_AWS_ACCESS_KEY_ID }}
+          AMPLIFY_AWS_SECRET_ACCESS_KEY: ${{ secrets.AMPLIFY_AWS_SECRET_ACCESS_KEY }}
+          AMPLIFY_APP_ID: ${{ secrets.AMPLIFY_APP_ID }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          AMPLIFY_AWS_REGION: ${{ vars.AMPLIFY_AWS_REGION }}
+      
+      - name: Comment PR if Amplify not found
+        if: steps.create-deployment.outputs.deployment_id != '' && steps.poll-amplify.outputs.found != 'true'
+        continue-on-error: true
+        run: |
+          COMMENT="## ⏳ Waiting for AWS Amplify Deployment
           
-          👉 **[View Preview]($DEPLOYMENT_URL)**
+          The GitHub Actions workflow is waiting for AWS Amplify to start the deployment.
           
-          This deployment will automatically update on each push to this PR.
+          **Possible reasons for delay:**
+          - Amplify is building your application (this can take several minutes)
+          - PR previews may not be enabled in AWS Amplify Console
+          - Check the [AWS Amplify Console](https://console.aws.amazon.com/amplify) for build status
+          
+          The deployment will be updated automatically once Amplify posts a status check.
           "
           
-          # Check if bot has already commented
+          # Check if bot has already commented about waiting
           EXISTING_COMMENT=$(gh api repos/${{ github.repository }}/issues/${{ steps.pr-info.outputs.pr_number }}/comments \
-            --jq '[.[] | select(.user.login == "github-actions[bot]" and (.body | contains("Preview Deployment"))) | .id] | .[0]')
+            --jq '[.[] | select(.user.login == "github-actions[bot]" and (.body | contains("Waiting for AWS Amplify"))) | .id] | .[0]')
           
-          if [ -n "$EXISTING_COMMENT" ] && [ "$EXISTING_COMMENT" != "null" ]; then
-            echo "Updating existing comment (ID: $EXISTING_COMMENT)"
-            gh api repos/${{ github.repository }}/issues/comments/$EXISTING_COMMENT \
-              -X PATCH \
-              -f body="$COMMENT"
-          else
-            echo "Creating new comment"
+          if [ -z "$EXISTING_COMMENT" ] || [ "$EXISTING_COMMENT" == "null" ]; then
+            echo "Creating waiting comment"
             gh api repos/${{ github.repository }}/issues/${{ steps.pr-info.outputs.pr_number }}/comments \
               -X POST \
               -f body="$COMMENT"
