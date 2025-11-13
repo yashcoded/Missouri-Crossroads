@@ -367,6 +367,7 @@ jobs:
         run: |
           STATE="${{ steps.poll-amplify.outputs.state }}"
           TARGET_URL="${{ steps.poll-amplify.outputs.deployment_url }}"
+          COMMIT_SHA="${{ github.event.pull_request.head.sha }}"
 
           case "$STATE" in
             "success")
@@ -386,24 +387,35 @@ jobs:
           TARGET_URL="${TARGET_URL:-https://console.aws.amazon.com/amplify}"
 
           echo "Setting commit status: $STATUS_STATE ($DESC)"
+          echo "Commit SHA: $COMMIT_SHA"
 
-          gh api repos/${{ github.repository }}/statuses/${{ steps.pr-info.outputs.pr_sha }} \
+          # Post commit status - use continue-on-error to avoid failing the workflow
+          if gh api repos/${{ github.repository }}/statuses/$COMMIT_SHA \
             -X POST \
             -f state="$STATUS_STATE" \
             -f context="AWS Amplify (fallback)" \
             -f description="$DESC" \
-            -f target_url="$TARGET_URL"
+            -f target_url="$TARGET_URL" 2>&1; then
+            echo "✅ Successfully posted commit status"
+          else
+            echo "⚠️ Failed to post commit status (this is non-blocking)"
+            echo "💡 Note: Commit status posting may be restricted by repository settings"
+          fi
 
-          echo "Setting deployment success context for PR visibility"
-
-          gh api repos/${{ github.repository }}/statuses/${{ steps.pr-info.outputs.pr_sha }} \
+          # Only post second status if first one succeeded
+          if gh api repos/${{ github.repository }}/statuses/$COMMIT_SHA \
             -X POST \
             -f state="$STATUS_STATE" \
             -f context="AWS Amplify Success" \
             -f description="$DESC" \
-            -f target_url="$TARGET_URL"
+            -f target_url="$TARGET_URL" 2>&1; then
+            echo "✅ Successfully posted second commit status"
+          else
+            echo "⚠️ Failed to post second commit status (this is non-blocking)"
+          fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
       
       - name: Create GitHub deployment
         if: github.event.action != 'closed'
