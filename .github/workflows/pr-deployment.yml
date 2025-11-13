@@ -218,9 +218,22 @@ jobs:
               fi
 
               if command -v aws >/dev/null 2>&1; then
-                BRANCH_NAME="${AMPLIFY_BRANCH_PREFIX_EFFECTIVE}${{ steps.pr-info.outputs.pr_number }}"
+                # Try actual PR branch name first (e.g., dev_1), then fall back to PR preview pattern (e.g., pr-2)
+                PR_BRANCH_NAME="${{ steps.pr-info.outputs.pr_branch }}"
+                PR_PREVIEW_BRANCH_NAME="${AMPLIFY_BRANCH_PREFIX_EFFECTIVE}${{ steps.pr-info.outputs.pr_number }}"
+                
+                # Try PR branch name first
+                BRANCH_NAME="$PR_BRANCH_NAME"
                 JOB_JSON=$(aws amplify list-jobs --app-id "$AMPLIFY_APP_ID_EFFECTIVE" --branch-name "$BRANCH_NAME" --max-items 1 2>/dev/null || echo "")
                 JOB_STATUS=$(echo "$JOB_JSON" | jq -r '.jobSummaries[0].status // empty')
+                
+                # If not found, try PR preview branch pattern
+                if [ -z "$JOB_STATUS" ] || [ "$JOB_STATUS" == "null" ] || [ "$JOB_STATUS" == "" ]; then
+                  BRANCH_NAME="$PR_PREVIEW_BRANCH_NAME"
+                  JOB_JSON=$(aws amplify list-jobs --app-id "$AMPLIFY_APP_ID_EFFECTIVE" --branch-name "$BRANCH_NAME" --max-items 1 2>/dev/null || echo "")
+                  JOB_STATUS=$(echo "$JOB_JSON" | jq -r '.jobSummaries[0].status // empty')
+                fi
+                
                 JOB_REASON=$(echo "$JOB_JSON" | jq -r '.jobSummaries[0].statusReason // empty')
 
                 if [ -n "$JOB_STATUS" ] && [ "$JOB_STATUS" != "null" ]; then
@@ -233,7 +246,13 @@ jobs:
                     else
                       APP_DEFAULT_DOMAIN=$(aws amplify get-app --app-id "$AMPLIFY_APP_ID_EFFECTIVE" --query 'app.defaultDomain' --output text 2>/dev/null || echo "")
                       if [ -n "$APP_DEFAULT_DOMAIN" ] && [ "$APP_DEFAULT_DOMAIN" != "None" ]; then
-                        DEPLOYMENT_URL="https://${BRANCH_NAME}.${APP_DEFAULT_DOMAIN}"
+                        # Use displayName if available, otherwise use branchName
+                        BRANCH_DISPLAY_NAME=$(echo "$BRANCH_INFO" | jq -r '.displayName // empty')
+                        if [ -n "$BRANCH_DISPLAY_NAME" ] && [ "$BRANCH_DISPLAY_NAME" != "null" ]; then
+                          DEPLOYMENT_URL="https://${BRANCH_DISPLAY_NAME}.${APP_DEFAULT_DOMAIN}"
+                        else
+                          DEPLOYMENT_URL="https://${BRANCH_NAME}.${APP_DEFAULT_DOMAIN}"
+                        fi
                       fi
                     fi
                   fi
