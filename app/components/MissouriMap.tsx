@@ -467,7 +467,7 @@ export default function MissouriMap({ fileName }: MissouriMapProps) {
             // force the default map type to roadmap (optional)
             mapTypeId: 'roadmap',
             streetViewControl: true,
-            fullscreenControl: true,
+            fullscreenControl: false,
           }}
         >
           {selectedLocation && (

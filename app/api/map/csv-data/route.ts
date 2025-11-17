@@ -471,7 +471,59 @@ async function parseCSV(csvText: string, centerLat?: string, centerLng?: string,
                             location.builtPlaced || location.BuiltPlaced || location.BUILT_PLACED ||
                             location['Built/Placed'] || location['BUILT_PLACED'] || location.built || location.Built || '';
       
-      locations.push(location);
+      // Normalize common raw header names to friendly canonical keys so the
+      // frontend (MapPopup) can render them with predictable labels.
+      const RAW_TO_CANON: Record<string, string> = {
+        // social / contact
+        'facebook page': 'facebook',
+        'facebook': 'facebook',
+        'fb page': 'facebook',
+        'fb page url': 'facebook',
+        'instagram': 'instagram',
+        'instagr am': 'instagram',
+        'website': 'website',
+        'url': 'website',
+        'website url': 'website',
+        'email': 'email',
+        'phone': 'phone',
+        // Facebook metrics
+        'fb page followers': 'fbFollowers',
+        'fb page likes': 'fbLikes',
+        'fb group members': 'fbGroupMembers',
+        // administrative
+        'county': 'county',
+        'data date': 'dataDate',
+        'data_date': 'dataDate',
+        // NRHP
+        'nrhp nomination form': 'nrhpNomination',
+        'nrhp nomination': 'nrhpNomination',
+        // Geo raw fields - keep but map to friendly names if present
+        'geocoordinates (dd)': 'geoCoordinatesDD',
+        'geocoordinates (dmm)': 'geoCoordinatesDMM',
+      };
+
+      // Build a cleaned location object: copy canonical fields already set above
+      const cleaned: any = {};
+      // First, copy the canonical fields we already populated (organizationName, address, etc.)
+      for (const k of ['id','organizationName','address','siteTypeCategory','tertiaryCategories','yearEstablished','builtPlaced','lat','lng','needsGeocoding','fullAddress']) {
+        if ((location as any)[k] !== undefined) cleaned[k] = (location as any)[k];
+      }
+
+      // Then map any raw headers present on the original location object to canonical names
+      Object.keys(location).forEach(rawKey => {
+        const normalized = rawKey.replace(/"/g, '').trim().toLowerCase();
+        const canon = RAW_TO_CANON[normalized];
+        if (canon) {
+          // Only set if we don't already have a value (canonical fields prefer existing mapped values)
+          if (cleaned[canon] === undefined) cleaned[canon] = (location as any)[rawKey];
+        } else {
+          // If the rawKey isn't mapped and it's *not* one of the already-copied canonical keys,
+          // skip adding it to avoid showing verbose header names in the UI.
+        }
+      });
+
+      // push the cleaned object
+      locations.push(cleaned);
       validLocationCount++;
       
       // Log first few valid locations for debugging
@@ -499,7 +551,7 @@ async function parseCSV(csvText: string, centerLat?: string, centerLng?: string,
       }
     }
     
-    processedRows++;
+  // processedRows++; (previous stray text removed)
     
     // Process all rows (removed 1000 row limit)
     // The CSV has 1500+ entries, so we need to process them all
