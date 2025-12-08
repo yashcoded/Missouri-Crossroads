@@ -20,9 +20,9 @@ test.describe('Map Page - Core Functionality', () => {
     // Check page loaded (title may vary)
     await expect(page).toHaveURL(/\/map/);
     
-    // Check for map heading or content
-    const heading = page.getByText(/Missouri.*Map|Interactive Map/i);
-    await expect(heading).toBeVisible({ timeout: 5000 });
+    // Check for a stable map UI element (search input) instead of a page heading
+    const searchInput = page.getByPlaceholder(/Search by organization|Search/i);
+    await expect(searchInput).toBeVisible({ timeout: 5000 });
   });
 
   test('should display location count indicator', async ({ page }) => {

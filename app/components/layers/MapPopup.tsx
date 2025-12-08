@@ -1,5 +1,9 @@
 'use client';
-import { getLocUrlForCategory } from '../../lib/locCategoryMap';
+import React, { useEffect, useState } from 'react';
+// Note: we intentionally do not import server resolver here because the
+// browser cannot call id.loc.gov directly (CORS). Instead the badge will
+// call our server-side proxy at `/api/loc/subject` which uses the resolver
+// server-side and is not subject to browser CORS.
 export interface LocationData {
   id: string;
   organizationName: string;
@@ -67,6 +71,146 @@ export default function MapPopup(props: any) {
   if (!location || location.lat == null || location.lng == null) return null;
   console.log('Rendering MapPopup for location:', location);
 
+  // Category badge component — resolves LOC URL asynchronously and avoids
+  // calling async functions during render (prevents href becoming a Promise).
+  const CategoryBadge: React.FC<{ c: string; small?: boolean }> = ({
+    c,
+    small,
+  }) => {
+    const [locUrl, setLocUrl] = useState<string | null | undefined>(undefined);
+
+    useEffect(() => {
+      let mounted = true;
+      function buildSearchFallback(term: string) {
+        const raw = String(term || '').trim();
+        const q0 = encodeURIComponent(raw).replace(/%20/g, '+');
+        const parts = [
+          `q=${q0}`,
+          `q=${encodeURIComponent('rdftype:SimpleType')}`,
+          `q=${encodeURIComponent('rdftype:Authority')}`,
+          `q=${encodeURIComponent('cs:http://id.loc.gov/authorities/subjects')}`,
+          `q=${encodeURIComponent('memberOf:http://id.loc.gov/authorities/subjects/collection_LCSH_General')}`,
+        ];
+        return `https://id.loc.gov/search/?${parts.join('&')}`;
+      }
+      (async () => {
+        try {
+          // Try sessionStorage first to avoid any network RTT if available
+          const cacheKey = 'locUrlCache_v1';
+          const raw =
+            typeof window !== 'undefined'
+              ? window.sessionStorage.getItem(cacheKey)
+              : null;
+          const cache = raw
+            ? (JSON.parse(raw) as Record<string, string | null>)
+            : {};
+          if (cache && Object.prototype.hasOwnProperty.call(cache, c)) {
+            if (!mounted) return;
+            const val = cache[c] ?? buildSearchFallback(c);
+            setLocUrl(val);
+            return;
+          }
+
+          // Fall back to batch endpoint (POST) which can later be used to
+          // resolve many queries at once. We send a single-item array here
+          // but map-shell can call the same endpoint with many items.
+          const res = await fetch('/api/loc/subjects', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ qs: [c] }),
+          });
+          if (!mounted) return;
+          if (!res.ok) {
+            const fallback = buildSearchFallback(c);
+            setLocUrl(fallback);
+            return;
+          }
+          const body = await res.json();
+          const url = body?.results?.[c] ?? null;
+
+          // persist in sessionStorage for quick reuse during this session
+          const newCache = { ...(cache || {}) } as Record<
+            string,
+            string | null
+          >;
+          newCache[c] = url ?? null;
+          try {
+            window.sessionStorage.setItem(cacheKey, JSON.stringify(newCache));
+          } catch (e) {
+            // ignore sessionStorage errors
+          }
+
+          const final = url ?? buildSearchFallback(c);
+          setLocUrl(final);
+        } catch (e) {
+          if (!mounted) return;
+          const fallback = buildSearchFallback(c);
+          setLocUrl(fallback);
+        }
+      })();
+      return () => {
+        mounted = false;
+      };
+    }, [c]);
+
+    const baseClass = small
+      ? 'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-800 border border-blue-200'
+      : 'inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-blue-50 text-blue-800 border border-blue-100';
+
+    if (locUrl) {
+      const isAuthority =
+        typeof locUrl === 'string' &&
+        /id\.loc\.gov\/authorities\/subjects\/sh/.test(locUrl);
+      return (
+        <a
+          href={locUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={`${baseClass} hover:underline`}
+          title={`Look up ${c} on LOC`}
+        >
+          {isAuthority ? (
+            <span className="inline-flex items-center gap-2">
+              <svg
+                className="w-3 h-3 text-green-600"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M5 13l4 4L19 7"
+                />
+              </svg>
+              <span>{c}</span>
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-2">
+              <svg
+                className="w-3 h-3 text-gray-500"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M13 16h-1v-4h-1"
+                />
+              </svg>
+              <span>{c}</span>
+            </span>
+          )}
+        </a>
+      );
+    }
+
+    return <span className={baseClass}>{c}</span>;
+  };
+
   const basicContent = (
     <div className="p-3 max-w-sm bg-white rounded shadow">
       <h3 className="font-bold text-lg mb-2">
@@ -86,28 +230,7 @@ export default function MapPopup(props: any) {
             .map(s => s.trim())
             .filter(Boolean);
           return cats.length > 0
-            ? cats.map((c, i) => {
-                const locUrl = getLocUrlForCategory(c);
-                return locUrl ? (
-                  <a
-                    key={i}
-                    href={locUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-800 border border-blue-200 hover:underline"
-                    title={`Look up ${c} on LOC`}
-                  >
-                    {c}
-                  </a>
-                ) : (
-                  <span
-                    key={i}
-                    className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-800 border border-blue-200"
-                  >
-                    {c}
-                  </span>
-                );
-              })
+            ? cats.map((c, i) => <CategoryBadge key={i} c={c} small />)
             : null;
         })()}
       </div>
@@ -167,7 +290,9 @@ export default function MapPopup(props: any) {
     }
     // preserve line breaks for addresses or long text
     return (
-      <div className="whitespace-pre-wrap break-words text-slate-700">{s}</div>
+      <div className="whitespace-pre-wrap wrap-break-word text-slate-700">
+        {s}
+      </div>
     );
   };
 
@@ -233,28 +358,7 @@ export default function MapPopup(props: any) {
             .map(s => s.trim())
             .filter(Boolean);
           return cats.length > 0
-            ? cats.map((c, i) => {
-                const locUrl = getLocUrlForCategory(c);
-                return locUrl ? (
-                  <a
-                    key={i}
-                    href={locUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-blue-50 text-blue-800 border border-blue-100 hover:underline"
-                    title={`Look up ${c} on LOC`}
-                  >
-                    {c}
-                  </a>
-                ) : (
-                  <span
-                    key={i}
-                    className="inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-blue-50 text-blue-800 border border-blue-100"
-                  >
-                    {c}
-                  </span>
-                );
-              })
+            ? cats.map((c, i) => <CategoryBadge key={i} c={c} />)
             : null;
         })()}
       </div>
@@ -335,7 +439,7 @@ export default function MapPopup(props: any) {
     // Render a centered DOM overlay covering the map viewport with a wide panel
     // that overlays everything else (high z-index) and a semi-transparent backdrop.
     return (
-      <div className="absolute inset-0 z-[9998] flex items-center justify-center pointer-events-auto py-8 px-6">
+      <div className="absolute inset-0 z-9998 flex items-center justify-center pointer-events-auto py-8 px-6">
         {/* semi-transparent backdrop that closes on click */}
         <div
           className="absolute inset-0 bg-black/50"
@@ -344,7 +448,7 @@ export default function MapPopup(props: any) {
         />
 
         {/* centered panel: full-ish on mobile, 50% width on md+ screens, sits above all other UI */}
-        <div className="relative w-full md:w-1/2 max-w-[calc(100%-4rem)] md:max-w-4xl max-h-[calc(100vh-4rem)] overflow-y-auto bg-white rounded-lg p-6 shadow-2xl z-[9999]">
+        <div className="relative w-full md:w-1/2 max-w-[calc(100%-4rem)] md:max-w-4xl max-h-[calc(100vh-4rem)] overflow-y-auto bg-white rounded-lg p-6 shadow-2xl z-9999">
           <button
             aria-label="Close details"
             onClick={onClose}
