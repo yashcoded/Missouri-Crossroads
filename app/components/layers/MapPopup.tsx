@@ -40,6 +40,7 @@ interface MapPopupProps {
   onClose?: () => void;
 }
 import { InfoWindow } from '@react-google-maps/api';
+import GoogleMapsDirectionsLink from '../GoogleMapsDirectionsLink';
 
 // Friendly labels for detailed view keys
 const LABELS: Record<string, string> = {
@@ -210,58 +211,6 @@ export default function MapPopup(props: any) {
 
     return <span className={baseClass}>{c}</span>;
   };
-
-  const basicContent = (
-    <div className="p-3 max-w-sm bg-white rounded shadow">
-      <h3 className="font-bold text-lg mb-2">
-        {location.organizationName || 'Unknown'}
-      </h3>
-      {/* categories as badges */}
-      <div className="flex flex-wrap gap-2 mb-3">
-        {(() => {
-          const catsRaw = [
-            location.siteTypeCategory,
-            location.tertiaryCategories,
-          ]
-            .filter(Boolean)
-            .join(', ');
-          const cats = catsRaw
-            .split(/[,;/|]+/)
-            .map(s => s.trim())
-            .filter(Boolean);
-          return cats.length > 0
-            ? cats.map((c, i) => <CategoryBadge key={i} c={c} small />)
-            : null;
-        })()}
-      </div>
-      <div className="text-sm text-gray-700 space-y-1">
-        <div>
-          <span className="font-semibold">{LABELS.address || 'Address'}:</span>
-          <span className="ml-2">{location.address || '—'}</span>
-        </div>
-      </div>
-      <div className="mt-3 flex justify-start">
-        <button
-          onClick={() => {
-            try {
-              window.dispatchEvent(
-                new CustomEvent('open-location-details', {
-                  detail: { id: location.id },
-                })
-              );
-            } catch (e) {
-              // no-op
-            }
-            onDetails?.();
-          }}
-          className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700"
-        >
-          Details
-        </button>
-      </div>
-    </div>
-  );
-
   // helper to render values with simple linkification for urls and emails
   const renderValue = (val: any) => {
     if (val == null) return null;
@@ -270,31 +219,85 @@ export default function MapPopup(props: any) {
     // simple url detection
     if (/^https?:\/\//i.test(s)) {
       return (
-        <a
-          href={s}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-blue-600 hover:underline"
-        >
-          {s}
-        </a>
+        <a href={s} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">{s}</a>
       );
     }
     // email
     if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s)) {
-      return (
-        <a href={`mailto:${s}`} className="text-blue-600 hover:underline">
-          {s}
-        </a>
-      );
+      return <a href={`mailto:${s}`} className="text-blue-600 hover:underline">{s}</a>;
     }
     // preserve line breaks for addresses or long text
-    return (
-      <div className="whitespace-pre-wrap wrap-break-word text-slate-700">
-        {s}
-      </div>
-    );
+    return <div className="whitespace-pre-wrap wrap-break-word text-slate-700">{s}</div>;
   };
+
+  const basicContent = (
+    <div className="p-3 max-w-sm bg-white rounded shadow">
+      <h3 className="font-bold text-lg mb-2">{location.organizationName || 'Unknown'}</h3>
+
+      {/* Divider */}
+      <div className="border-t border-slate-200 my-3" />
+
+      {/* Address */}
+      <div className="text-sm text-gray-700 mb-2">
+        <div>
+          <span className="font-semibold">{LABELS.address || 'Address'}:</span>
+          <span className="ml-2">{renderValue(location.address) ?? '—'}</span>
+        </div>
+      </div>
+
+      {/* Contact */}
+      <div className="text-sm text-gray-700 mb-3">
+        <div>
+          <span className="font-semibold">Contact:</span>
+          <span className="ml-2 block wrap-break-word break-all whitespace-normal max-w-full">
+            {(() => {
+              const phone = location.phone && String(location.phone).trim();
+              const email = location.email && String(location.email).trim();
+              const website = location.website && String(location.website).trim();
+              const facebook = location.facebook && String(location.facebook).trim();
+              const instagram = location.instagram && String(location.instagram).trim();
+
+              const makeUrl = (u: string) => (/^https?:\/\//i.test(u) ? u : `https://${u}`);
+
+              if (phone) return <a href={`tel:${phone}`} className="text-blue-600 hover:underline wrap-break-word">{phone}</a>;
+              if (email) return <a href={`mailto:${email}`} className="text-blue-600 hover:underline wrap-break-word">{email}</a>;
+              if (website) return <a href={makeUrl(website)} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline wrap-break-word">{website}</a>;
+              if (facebook) return <a href={makeUrl(facebook)} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline wrap-break-word">Facebook</a>;
+              if (instagram) return <a href={makeUrl(instagram)} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline wrap-break-word">Instagram</a>;
+
+              const q = encodeURIComponent(location.organizationName || location.address || '').replace(/%20/g, '+');
+              const url = `https://www.google.com/search?q=${q}`;
+              return <a href={url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">Search for {location.organizationName || 'this place'}</a>;
+            })()}
+          </span>
+        </div>
+      </div>
+
+      {/* Categories */}
+      <div className="flex flex-wrap gap-2 mb-3">
+        {(() => {
+          const catsRaw = [location.siteTypeCategory, location.tertiaryCategories].filter(Boolean).join(', ');
+          const cats = catsRaw.split(/[,;/|]+/).map(s => s.trim()).filter(Boolean);
+          return cats.length > 0 ? cats.map((c, i) => <CategoryBadge key={i} c={c} small />) : null;
+        })()}
+      </div>
+
+      {/* Bottom actions: Directions (left) and Details (right) */}
+      <div className="mt-3 flex items-center justify-between">
+        <div>
+          <GoogleMapsDirectionsLink lat={location.lat} lng={location.lng} address={location.fullAddress || location.address} label={location.organizationName} />
+        </div>
+        <div>
+          <button onClick={() => {
+              try { window.dispatchEvent(new CustomEvent('open-location-details', { detail: { id: location.id } })); } catch (e) { }
+              onDetails?.();
+            }} className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700">Details</button>
+        </div>
+      </div>
+    </div>
+  );
+
+ 
 
   // Group related fields together for a cleaner detailed view
   const FIELD_GROUPS: { title: string; keys: string[] }[] = [
