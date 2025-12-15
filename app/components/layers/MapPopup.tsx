@@ -219,20 +219,37 @@ export default function MapPopup(props: any) {
     // simple url detection
     if (/^https?:\/\//i.test(s)) {
       return (
-        <a href={s} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">{s}</a>
+        <a
+          href={s}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-blue-600 hover:underline"
+        >
+          {s}
+        </a>
       );
     }
     // email
     if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s)) {
-      return <a href={`mailto:${s}`} className="text-blue-600 hover:underline">{s}</a>;
+      return (
+        <a href={`mailto:${s}`} className="text-blue-600 hover:underline">
+          {s}
+        </a>
+      );
     }
     // preserve line breaks for addresses or long text
-    return <div className="whitespace-pre-wrap wrap-break-word text-slate-700">{s}</div>;
+    return (
+      <div className="whitespace-pre-wrap wrap-break-word text-slate-700">
+        {s}
+      </div>
+    );
   };
 
   const basicContent = (
     <div className="p-3 max-w-sm bg-white rounded shadow">
-      <h3 className="font-bold text-lg mb-2">{location.organizationName || 'Unknown'}</h3>
+      <h3 className="font-bold text-lg mb-2">
+        {location.organizationName || 'Unknown'}
+      </h3>
 
       {/* Divider */}
       <div className="border-t border-slate-200 my-3" />
@@ -253,21 +270,82 @@ export default function MapPopup(props: any) {
             {(() => {
               const phone = location.phone && String(location.phone).trim();
               const email = location.email && String(location.email).trim();
-              const website = location.website && String(location.website).trim();
-              const facebook = location.facebook && String(location.facebook).trim();
-              const instagram = location.instagram && String(location.instagram).trim();
+              const website =
+                location.website && String(location.website).trim();
+              const facebook =
+                location.facebook && String(location.facebook).trim();
+              const instagram =
+                location.instagram && String(location.instagram).trim();
 
-              const makeUrl = (u: string) => (/^https?:\/\//i.test(u) ? u : `https://${u}`);
+              const makeUrl = (u: string) =>
+                /^https?:\/\//i.test(u) ? u : `https://${u}`;
 
-              if (phone) return <a href={`tel:${phone}`} className="text-blue-600 hover:underline wrap-break-word">{phone}</a>;
-              if (email) return <a href={`mailto:${email}`} className="text-blue-600 hover:underline wrap-break-word">{email}</a>;
-              if (website) return <a href={makeUrl(website)} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline wrap-break-word">{website}</a>;
-              if (facebook) return <a href={makeUrl(facebook)} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline wrap-break-word">Facebook</a>;
-              if (instagram) return <a href={makeUrl(instagram)} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline wrap-break-word">Instagram</a>;
+              if (phone)
+                return (
+                  <a
+                    href={`tel:${phone}`}
+                    className="text-blue-600 hover:underline wrap-break-word"
+                  >
+                    {phone}
+                  </a>
+                );
+              if (email)
+                return (
+                  <a
+                    href={`mailto:${email}`}
+                    className="text-blue-600 hover:underline wrap-break-word"
+                  >
+                    {email}
+                  </a>
+                );
+              if (website)
+                return (
+                  <a
+                    href={makeUrl(website)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-600 hover:underline wrap-break-word"
+                  >
+                    {website}
+                  </a>
+                );
+              if (facebook)
+                return (
+                  <a
+                    href={makeUrl(facebook)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-600 hover:underline wrap-break-word"
+                  >
+                    Facebook
+                  </a>
+                );
+              if (instagram)
+                return (
+                  <a
+                    href={makeUrl(instagram)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-600 hover:underline wrap-break-word"
+                  >
+                    Instagram
+                  </a>
+                );
 
-              const q = encodeURIComponent(location.organizationName || location.address || '').replace(/%20/g, '+');
+              const q = encodeURIComponent(
+                location.organizationName || location.address || ''
+              ).replace(/%20/g, '+');
               const url = `https://www.google.com/search?q=${q}`;
-              return <a href={url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">Search for {location.organizationName || 'this place'}</a>;
+              return (
+                <a
+                  href={url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-600 hover:underline"
+                >
+                  Search for {location.organizationName || 'this place'}
+                </a>
+              );
             })()}
           </span>
         </div>
@@ -276,28 +354,52 @@ export default function MapPopup(props: any) {
       {/* Categories */}
       <div className="flex flex-wrap gap-2 mb-3">
         {(() => {
-          const catsRaw = [location.siteTypeCategory, location.tertiaryCategories].filter(Boolean).join(', ');
-          const cats = catsRaw.split(/[,;/|]+/).map(s => s.trim()).filter(Boolean);
-          return cats.length > 0 ? cats.map((c, i) => <CategoryBadge key={i} c={c} small />) : null;
+          const catsRaw = [
+            location.siteTypeCategory,
+            location.tertiaryCategories,
+          ]
+            .filter(Boolean)
+            .join(', ');
+          const cats = catsRaw
+            .split(/[,;/|]+/)
+            .map(s => s.trim())
+            .filter(Boolean);
+          return cats.length > 0
+            ? cats.map((c, i) => <CategoryBadge key={i} c={c} small />)
+            : null;
         })()}
       </div>
 
       {/* Bottom actions: Directions (left) and Details (right) */}
       <div className="mt-3 flex items-center justify-between">
         <div>
-          <GoogleMapsDirectionsLink lat={location.lat} lng={location.lng} address={location.fullAddress || location.address} label={location.organizationName} />
+          <GoogleMapsDirectionsLink
+            lat={location.lat}
+            lng={location.lng}
+            address={location.fullAddress || location.address}
+            label={location.organizationName}
+          />
         </div>
         <div>
-          <button onClick={() => {
-              try { window.dispatchEvent(new CustomEvent('open-location-details', { detail: { id: location.id } })); } catch (e) { }
+          <button
+            onClick={() => {
+              try {
+                window.dispatchEvent(
+                  new CustomEvent('open-location-details', {
+                    detail: { id: location.id },
+                  })
+                );
+              } catch (e) {}
               onDetails?.();
-            }} className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700">Details</button>
+            }}
+            className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700"
+          >
+            Details
+          </button>
         </div>
       </div>
     </div>
   );
-
- 
 
   // Group related fields together for a cleaner detailed view
   const FIELD_GROUPS: { title: string; keys: string[] }[] = [

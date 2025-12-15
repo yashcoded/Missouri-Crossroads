@@ -60,7 +60,12 @@ export default function SearchOverlay({
                 checked={showMuseums}
                 onChange={e => setShowMuseums(e.target.checked)}
               />
-              <span>🏛️ Museums, Monuments & Historic Markers</span>
+              <span className="inline-flex items-center gap-2">
+                <span aria-hidden>🏛️</span>
+                <span className="text-red-500">
+                  Museums, Monuments & Historic Markers
+                </span>
+              </span>
             </label>
             <label className="flex items-center space-x-3">
               <input
@@ -68,7 +73,10 @@ export default function SearchOverlay({
                 checked={showLibraries}
                 onChange={e => setShowLibraries(e.target.checked)}
               />
-              <span>📚 Libraries & Educational</span>
+              <span className="inline-flex items-center gap-2">
+                <span aria-hidden>📚</span>
+                <span className="text-blue-600">Libraries & Educational</span>
+              </span>
             </label>
             <label className="flex items-center space-x-3">
               <input
@@ -76,7 +84,10 @@ export default function SearchOverlay({
                 checked={showOthers}
                 onChange={e => setShowOthers(e.target.checked)}
               />
-              <span>🏢 Others</span>
+              <span className="inline-flex items-center gap-2">
+                <span aria-hidden>🏢</span>
+                <span className="text-green-600">Others</span>
+              </span>
             </label>
           </div>
         </div>

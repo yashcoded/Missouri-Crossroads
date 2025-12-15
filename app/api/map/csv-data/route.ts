@@ -485,7 +485,22 @@ async function parseCSV(csvText: string, centerLat?: string, centerLng?: string,
         'url': 'website',
         'website url': 'website',
         'email': 'email',
+        'email address': 'email',
+        'e-mail': 'email',
+        'e mail': 'email',
+        'contact email': 'email',
         'phone': 'phone',
+        'phone number': 'phone',
+        'telephone': 'phone',
+        'tel': 'phone',
+        'phone#': 'phone',
+        'contact phone': 'phone',
+  'mobile': 'phone',
+  'mobile phone': 'phone',
+  'cell': 'phone',
+  'cell phone': 'phone',
+  'contact': 'phone',
+        'contact phone number': 'phone',
         // Facebook metrics
         'fb page followers': 'fbFollowers',
         'fb page likes': 'fbLikes',
@@ -502,10 +517,10 @@ async function parseCSV(csvText: string, centerLat?: string, centerLng?: string,
         'geocoordinates (dmm)': 'geoCoordinatesDMM',
       };
 
-      // Build a cleaned location object: copy canonical fields already set above
+      // Build a cleaned location object: copy canonical fields we already populated
       const cleaned: any = {};
-      // First, copy the canonical fields we already populated (organizationName, address, etc.)
-      for (const k of ['id','organizationName','address','siteTypeCategory','tertiaryCategories','yearEstablished','builtPlaced','lat','lng','needsGeocoding','fullAddress']) {
+      // First, copy the canonical fields we already populated (organizationName, address, contact fields, etc.)
+      for (const k of ['id','organizationName','address','siteTypeCategory','tertiaryCategories','yearEstablished','builtPlaced','lat','lng','needsGeocoding','fullAddress','phone','email','facebook','instagram','website']) {
         if ((location as any)[k] !== undefined) cleaned[k] = (location as any)[k];
       }
 
@@ -521,6 +536,26 @@ async function parseCSV(csvText: string, centerLat?: string, centerLng?: string,
           // skip adding it to avoid showing verbose header names in the UI.
         }
       });
+
+      // If phone/email weren't mapped via RAW_TO_CANON, try to auto-detect from raw headers
+      if (!cleaned.phone) {
+        const phoneLikeKey = Object.keys(location).find(k => /phone|tel|telephone|mobile|cell|contact/i.test(k));
+        if (phoneLikeKey && (location as any)[phoneLikeKey]) {
+          cleaned.phone = (location as any)[phoneLikeKey];
+        }
+      }
+      if (!cleaned.email) {
+        const emailLikeKey = Object.keys(location).find(k => /email|e-?mail|contact email/i.test(k));
+        if (emailLikeKey && (location as any)[emailLikeKey]) {
+          cleaned.email = (location as any)[emailLikeKey];
+        }
+      }
+
+      // In development, log any detections for visibility
+      if (process.env.NODE_ENV === 'development') {
+        if (cleaned.phone) console.log(`🔍 Mapped phone -> ${String(cleaned.phone).slice(0,60)}`);
+        if (cleaned.email) console.log(`🔍 Mapped email -> ${String(cleaned.email).slice(0,60)}`);
+      }
 
       // push the cleaned object
       locations.push(cleaned);
