@@ -10,8 +10,8 @@ const WelcomePage: React.FC = () => {
         <Image
           src="/splash.png"
           alt="Background Image"
-          layout="fill"
-          objectFit="cover"
+          fill
+          style={{ objectFit: "cover" }}
           className="z-[-1]"
         />
       </div>

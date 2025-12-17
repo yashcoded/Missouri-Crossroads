@@ -141,6 +141,20 @@ jobs:
     if: github.event_name == 'pull_request'
     
     steps:
+      - name: Install AWS CLI
+        if: github.event.action == 'closed'
+        run: |
+          if ! command -v aws >/dev/null 2>&1; then
+            echo "Installing AWS CLI..."
+            curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+            unzip -q awscliv2.zip
+            sudo ./aws/install
+            rm -rf aws awscliv2.zip
+            echo "✅ AWS CLI installed"
+          else
+            echo "✅ AWS CLI already available"
+          fi
+      
       - name: Set environment variables
         id: pr-info
         run: |
@@ -682,6 +696,7 @@ jobs:
         if: github.event.action == 'closed'
         run: |
           ENVIRONMENT="pr-${{ steps.pr-info.outputs.pr_number }}"
+          PR_BRANCH_NAME="${{ steps.pr-info.outputs.pr_branch }}"
           
           # Find all deployments for this environment and delete them
           DEPLOYMENTS=$(gh api repos/${{ github.repository }}/deployments \
@@ -690,15 +705,71 @@ jobs:
           if [ -n "$DEPLOYMENTS" ]; then
             echo "$DEPLOYMENTS" | while read DEPLOY_ID; do
               if [ -n "$DEPLOY_ID" ]; then
-                echo "Deleting deployment $DEPLOY_ID"
+                echo "Deleting GitHub deployment $DEPLOY_ID"
                 gh api repos/${{ github.repository }}/deployments/$DEPLOY_ID \
                   -X DELETE || true
               fi
             done
           else
-            echo "No deployments to clean up"
+            echo "No GitHub deployments to clean up"
+          fi
+          
+          # Delete AWS Amplify branch/environment
+          AWS_KEY="${AWS_ACCESS_KEY_ID:-${AMPLIFY_AWS_ACCESS_KEY_ID:-}}"
+          AWS_SECRET="${AWS_SECRET_ACCESS_KEY:-${AMPLIFY_AWS_SECRET_ACCESS_KEY:-}}"
+          AWS_REGION_EFFECTIVE="${AWS_REGION:-${AMPLIFY_AWS_REGION:-us-east-2}}"
+          AMPLIFY_APP_ID_EFFECTIVE="${AMPLIFY_APP_ID:-}"
+          AMPLIFY_BRANCH_PREFIX_EFFECTIVE="${AMPLIFY_BRANCH_PREFIX:-pr-}"
+          
+          if [ -n "$AMPLIFY_APP_ID_EFFECTIVE" ] && [ -n "$AWS_KEY" ] && [ -n "$AWS_SECRET" ]; then
+            export AWS_ACCESS_KEY_ID="$AWS_KEY"
+            export AWS_SECRET_ACCESS_KEY="$AWS_SECRET"
+            export AWS_DEFAULT_REGION="$AWS_REGION_EFFECTIVE"
+            
+            if command -v aws >/dev/null 2>&1; then
+              # Try to delete the branch - try both PR branch name and PR preview pattern
+              PR_PREVIEW_BRANCH_NAME="${AMPLIFY_BRANCH_PREFIX_EFFECTIVE}${{ steps.pr-info.outputs.pr_number }}"
+              
+              # Try PR preview branch pattern first (most common for Amplify PR previews)
+              echo "🗑️ Attempting to delete AWS Amplify branch: $PR_PREVIEW_BRANCH_NAME"
+              if aws amplify delete-branch \
+                --app-id "$AMPLIFY_APP_ID_EFFECTIVE" \
+                --branch-name "$PR_PREVIEW_BRANCH_NAME" \
+                --region "$AWS_REGION_EFFECTIVE" 2>&1; then
+                echo "✅ Successfully deleted Amplify branch: $PR_PREVIEW_BRANCH_NAME"
+              else
+                echo "⚠️ Could not delete branch $PR_PREVIEW_BRANCH_NAME (may not exist or already deleted)"
+                
+                # Try actual PR branch name as fallback
+                if [ "$PR_BRANCH_NAME" != "$PR_PREVIEW_BRANCH_NAME" ]; then
+                  echo "🗑️ Attempting to delete AWS Amplify branch: $PR_BRANCH_NAME"
+                  if aws amplify delete-branch \
+                    --app-id "$AMPLIFY_APP_ID_EFFECTIVE" \
+                    --branch-name "$PR_BRANCH_NAME" \
+                    --region "$AWS_REGION_EFFECTIVE" 2>&1; then
+                    echo "✅ Successfully deleted Amplify branch: $PR_BRANCH_NAME"
+                  else
+                    echo "⚠️ Could not delete branch $PR_BRANCH_NAME (may not exist or already deleted)"
+                  fi
+                fi
+              fi
+            else
+              echo "⚠️ AWS CLI not available; skipping Amplify branch deletion"
+              echo "💡 Install AWS CLI in the workflow runner to enable automatic branch cleanup"
+            fi
+          else
+            echo "⚠️ AWS credentials not configured; skipping Amplify branch deletion"
+            echo "💡 Configure AMPLIFY_APP_ID and AWS credentials to enable automatic branch cleanup"
           fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AMPLIFY_AWS_ACCESS_KEY_ID: ${{ secrets.AMPLIFY_AWS_ACCESS_KEY_ID }}
+          AMPLIFY_AWS_SECRET_ACCESS_KEY: ${{ secrets.AMPLIFY_AWS_SECRET_ACCESS_KEY }}
+          AMPLIFY_APP_ID: ${{ secrets.AMPLIFY_APP_ID }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          AMPLIFY_AWS_REGION: ${{ vars.AMPLIFY_AWS_REGION }}
+          AMPLIFY_BRANCH_PREFIX: ${{ vars.AMPLIFY_BRANCH_PREFIX }}
 
 
