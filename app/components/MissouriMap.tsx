@@ -512,9 +512,9 @@ export default function MissouriMap({ fileName }: MissouriMapProps) {
   if (error) return <div className="text-red-600">Error: {error}</div>;
 
   return (
-    <div className="space-y-4">
-      {/* Map */}
-      <div className="relative h-[600px] w-full rounded-xl overflow-hidden border-4 border-blue-300 shadow-2xl">
+    <div className="space-y-0 sm:space-y-2 md:space-y-4">
+      {/* Map - Use viewport height minus navbar on mobile for better mobile experience */}
+      <div className="relative h-[calc(100vh-60px)] sm:h-[500px] md:h-[600px] w-full rounded-none sm:rounded-lg md:rounded-xl overflow-hidden border-0 sm:border-2 md:border-4 border-blue-300 shadow-none sm:shadow-lg md:shadow-2xl">
         <GoogleMap
           mapContainerStyle={{ width: '100%', height: '100%' }}
           center={mapCenter}
@@ -527,6 +527,12 @@ export default function MissouriMap({ fileName }: MissouriMapProps) {
             mapTypeId: 'roadmap',
             streetViewControl: true,
             fullscreenControl: false,
+            // Mobile-friendly controls
+            zoomControl: true,
+            // Better touch interaction on mobile
+            gestureHandling: 'greedy',
+            // Disable some controls on mobile for cleaner UI
+            disableDefaultUI: false,
           }}
         >
           {selectedLocation && (
@@ -547,7 +553,7 @@ export default function MissouriMap({ fileName }: MissouriMapProps) {
           selectedId={selectedLocation?.id ?? selectedLocationId}
           onSelect={handleLocationSelect}
           position="right"
-          width="w-80"
+          width="w-[calc(100%-1rem)] sm:w-80"
           inline={true}
         />
 
@@ -566,43 +572,47 @@ export default function MissouriMap({ fileName }: MissouriMapProps) {
 
       {/* Viewport Loading Indicator */}
       {loadingViewport && (
-        <div className="fixed top-4 right-4 bg-blue-600 text-white px-4 py-2 rounded-lg shadow-lg z-10 flex items-center space-x-2">
-          <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
-          <span className="text-sm font-medium">
+        <div className="fixed top-16 sm:top-4 right-2 sm:right-4 bg-blue-600 text-white px-3 sm:px-4 py-2 rounded-lg shadow-lg z-10 flex items-center space-x-2 text-xs sm:text-sm">
+          <div className="animate-spin rounded-full h-3 w-3 sm:h-4 sm:w-4 border-2 border-white border-t-transparent"></div>
+          <span className="font-medium">
             Loading nearby locations...
           </span>
         </div>
       )}
 
       {/* Stats */}
-      <div className="text-center bg-gradient-to-r from-blue-100 to-green-100 rounded-xl p-6 border-2 border-blue-200 shadow-lg">
+      <div className="text-center bg-gradient-to-r from-blue-100 to-green-100 rounded-lg sm:rounded-xl p-3 sm:p-4 md:p-6 border-2 border-blue-200 shadow-lg mx-2 sm:mx-0">
         {searchQuery ? (
-          <div className="text-lg">
-            <span className="font-bold text-blue-800">🔍 Search Results:</span>
-            <span className="font-bold text-blue-600 text-xl mx-2">
-              {filteredLocations.length}
-            </span>
-            <span className="text-blue-700 font-semibold">
-              results found for
-            </span>
-            <span className="font-bold text-blue-600 text-xl mx-2">
-              "{searchQuery}"
-            </span>
-            <div className="text-sm text-blue-600 mt-2">
+          <div className="text-sm sm:text-base md:text-lg">
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2">
+              <span className="font-bold text-blue-800">🔍 Search Results:</span>
+              <span className="font-bold text-blue-600 text-lg sm:text-xl">
+                {filteredLocations.length}
+              </span>
+              <span className="text-blue-700 font-semibold text-xs sm:text-sm md:text-base">
+                results found for
+              </span>
+              <span className="font-bold text-blue-600 text-base sm:text-lg md:text-xl break-words">
+                "{searchQuery}"
+              </span>
+            </div>
+            <div className="text-xs sm:text-sm text-blue-600 mt-2">
               out of <span className="font-bold">{locations.length}</span> total
               Missouri locations
             </div>
           </div>
         ) : (
-          <div className="text-lg">
-            <span className="font-bold text-green-800">📍 Showing</span>
-            <span className="font-bold text-green-600 text-xl mx-2">
-              {filteredLocations.length}
-            </span>
-            <span className="text-green-700 font-semibold">
-              location{filteredLocations.length !== 1 ? 's' : ''}
-            </span>
-            <div className="text-sm text-blue-600 mt-2">
+          <div className="text-sm sm:text-base md:text-lg">
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2">
+              <span className="font-bold text-green-800">📍 Showing</span>
+              <span className="font-bold text-green-600 text-lg sm:text-xl">
+                {filteredLocations.length}
+              </span>
+              <span className="text-green-700 font-semibold text-xs sm:text-sm md:text-base">
+                location{filteredLocations.length !== 1 ? 's' : ''}
+              </span>
+            </div>
+            <div className="text-xs sm:text-sm text-blue-600 mt-2">
               out of <span className="font-bold">{locations.length}</span> total
               locations in Missouri
               {loadingViewport && (

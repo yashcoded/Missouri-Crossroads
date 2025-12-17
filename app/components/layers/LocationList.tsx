@@ -77,12 +77,16 @@ export default function LocationList({
   }, []);
 
   // Choose positioning: fixed (default) or absolute when inline inside a container
+  // On mobile, position below search overlay to avoid overlap
   const posClass = inline
-    ? `absolute ${isRight ? 'top-4 right-4' : 'top-4 left-4'}`
-    : `fixed top-20 ${isRight ? 'right-4' : 'left-4'}`;
+    ? `absolute ${isRight ? 'top-14 sm:top-4 right-2 sm:right-4' : 'top-14 sm:top-4 left-2 sm:left-4'}`
+    : `fixed top-20 ${isRight ? 'right-2 sm:right-4' : 'left-2 sm:left-4'}`;
 
   // When collapsed, override width so the handle is wide enough to show the label
-  const asideWidthClass = collapsed ? 'w-40' : width;
+  // Mobile: full width minus padding, Desktop: use provided width
+  const asideWidthClass = collapsed 
+    ? 'w-[calc(100%-1rem)] sm:w-40' 
+    : 'w-[calc(100%-1rem)] sm:w-80 max-w-[calc(100vw-1rem)] sm:max-w-none';
 
   return (
     <>
@@ -97,7 +101,7 @@ export default function LocationList({
 
       <aside
         aria-label="Location list"
-        className={`${posClass} ${asideWidthClass} max-h-[75vh] bg-white/95 backdrop-blur-sm ${collapsed ? 'border-0' : 'border border-gray-200'} rounded-lg shadow-xl z-50 overflow-hidden`}
+        className={`${posClass} ${asideWidthClass} max-h-[70vh] sm:max-h-[75vh] bg-white/95 backdrop-blur-sm ${collapsed ? 'border-0' : 'border border-gray-200'} rounded-lg shadow-xl z-50 overflow-hidden`}
       >
         {/* Header with collapse control */}
         <div
@@ -123,7 +127,7 @@ export default function LocationList({
                 <button
                   onClick={() => setCollapsed(false)}
                   aria-label="Open location list"
-                  className="flex-1 text-left px-4 h-12 text-base font-medium text-gray-800 bg-white focus:ring-4 focus:ring-blue-200 focus:border-blue-500 outline-none transition-all duration-150 hover:bg-gray-50 flex items-center"
+                  className="flex-1 text-left px-3 sm:px-4 h-11 sm:h-12 text-sm sm:text-base font-medium text-gray-800 bg-white focus:ring-4 focus:ring-blue-200 focus:border-blue-500 outline-none transition-all duration-150 hover:bg-gray-50 flex items-center touch-manipulation min-h-[44px]"
                 >
                   <span className="mx-auto">View List</span>
                 </button>
@@ -133,7 +137,7 @@ export default function LocationList({
                   aria-expanded={!collapsed}
                   title={collapsed ? 'Expand locations' : 'Collapse locations'}
                   onClick={() => setCollapsed(s => !s)}
-                  className="w-12 h-12 flex items-center justify-center bg-white hover:bg-gray-50"
+                  className="w-11 sm:w-12 h-11 sm:h-12 flex items-center justify-center bg-white hover:bg-gray-50 touch-manipulation min-h-[44px] min-w-[44px]"
                 >
                   {isRight ? (
                     <svg
@@ -170,7 +174,7 @@ export default function LocationList({
               aria-expanded={!collapsed}
               title={collapsed ? 'Expand locations' : 'Collapse locations'}
               onClick={() => setCollapsed(s => !s)}
-              className="ml-2 p-1 rounded-md hover:bg-gray-100"
+              className="ml-2 p-2 rounded-md hover:bg-gray-100 touch-manipulation min-h-[44px] min-w-[44px] flex items-center justify-center"
             >
               {/* Chevron direction depends on position and collapsed state */}
               {isRight ? (
@@ -230,7 +234,7 @@ export default function LocationList({
 
         {/* Collapsed state: hide the list body */}
         {!collapsed && (
-          <div className="px-2 py-2 overflow-y-auto max-h-[68vh]">
+          <div className="px-1 sm:px-2 py-2 overflow-y-auto max-h-[calc(100vh-12rem)] sm:max-h-[68vh]">
             <ul className="divide-y divide-gray-100">
               {locations.length === 0 && (
                 <li className="p-4 text-sm text-slate-500">
@@ -241,17 +245,17 @@ export default function LocationList({
               {locations.map(loc => {
                 const isSelected = selectedId && selectedId === loc.id;
                 return (
-                  <li key={loc.id} className={`p-2`}>
+                  <li key={loc.id} className={`p-1 sm:p-2`}>
                     <button
                       onClick={() => onSelect?.(loc)}
-                      className={`w-full text-left rounded-lg p-3 transition-colors flex flex-col items-start ${isSelected ? 'bg-blue-50 border border-blue-200' : 'hover:bg-gray-50'}`}
+                      className={`w-full text-left rounded-lg p-3 sm:p-3 transition-colors flex flex-col items-start min-h-[60px] touch-manipulation ${isSelected ? 'bg-blue-50 border border-blue-200' : 'hover:bg-gray-50 active:bg-gray-100'}`}
                     >
                       <div className="flex items-center justify-between w-full">
-                        <span className="font-medium text-slate-800">
+                        <span className="font-medium text-sm sm:text-base text-slate-800">
                           {loc.organizationName || 'Unnamed location'}
                         </span>
                         {loc.yearEstablished && (
-                          <span className="text-xs text-slate-500">
+                          <span className="text-xs text-slate-500 ml-2">
                             {loc.yearEstablished}
                           </span>
                         )}

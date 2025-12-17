@@ -24,15 +24,20 @@ const nextConfig: NextConfig = {
     ignoreBuildErrors: false, // Keep TypeScript checks enabled
   },
   
-  // Note: Webpack warning from next-pwa is expected - next-pwa uses webpack internally
-  // This is harmless when using Turbopack in dev mode
+  // Note: The "Webpack is configured while Turbopack is not" warning is expected and harmless.
+  // - next-pwa uses webpack internally for service worker generation
+  // - PWA is disabled in development (see line 35), so webpack isn't used during dev
+  // - In production builds, webpack is used normally (Turbopack is dev-only)
+  // - This warning can be safely ignored - it doesn't affect functionality
 };
 
 const pwaConfig = withPWA({
   dest: "public",
   register: true,
   skipWaiting: true,
-  disable: process.env.NODE_ENV === "development", // Disable PWA in development
+  // Disable PWA in development to avoid webpack/Turbopack conflicts
+  // PWA service workers are only generated during production builds
+  disable: process.env.NODE_ENV === "development",
   buildExcludes: [/app-build-manifest\.json$/],
   runtimeCaching: [
     {

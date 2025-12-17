@@ -544,7 +544,7 @@ export default function MapPopup(props: any) {
     // Render a centered DOM overlay covering the map viewport with a wide panel
     // that overlays everything else (high z-index) and a semi-transparent backdrop.
     return (
-      <div className="absolute inset-0 z-9998 flex items-center justify-center pointer-events-auto py-8 px-6">
+      <div className="absolute inset-0 z-[9998] flex items-center justify-center pointer-events-auto py-2 sm:py-4 md:py-8 px-2 sm:px-4 md:px-6">
         {/* semi-transparent backdrop that closes on click */}
         <div
           className="absolute inset-0 bg-black/50"
@@ -553,11 +553,11 @@ export default function MapPopup(props: any) {
         />
 
         {/* centered panel: full-ish on mobile, 50% width on md+ screens, sits above all other UI */}
-        <div className="relative w-full md:w-1/2 max-w-[calc(100%-4rem)] md:max-w-4xl max-h-[calc(100vh-4rem)] overflow-y-auto bg-white rounded-lg p-6 shadow-2xl z-9999">
+        <div className="relative w-full md:w-1/2 max-w-full md:max-w-4xl max-h-[calc(100vh-5rem)] sm:max-h-[calc(100vh-4rem)] overflow-y-auto bg-white rounded-lg p-4 sm:p-6 shadow-2xl z-[9999]">
           <button
             aria-label="Close details"
             onClick={onClose}
-            className="absolute -top-3 -right-3 bg-white rounded-full p-1 shadow-md hover:bg-gray-50"
+            className="absolute top-2 right-2 sm:-top-3 sm:-right-3 bg-white rounded-full p-2 sm:p-1 shadow-md hover:bg-gray-50 min-w-[44px] min-h-[44px] flex items-center justify-center touch-manipulation"
           >
             <svg
               className="w-4 h-4 text-slate-700"
@@ -582,12 +582,12 @@ export default function MapPopup(props: any) {
 
   // basic panel rendered in bottom-left of the map viewport
   return (
-    <div className="absolute left-4 bottom-4 z-50">
-      <div className="relative p-3 w-80 bg-white rounded shadow">
+    <div className="absolute left-2 sm:left-4 bottom-2 sm:bottom-4 z-50 w-[calc(100%-4rem)] sm:w-80 max-w-[calc(100vw-4rem)] sm:max-w-none">
+      <div className="relative p-3 sm:p-4 bg-white rounded-lg sm:rounded shadow-lg sm:shadow">
         <button
           aria-label="Close popup"
           onClick={onClose}
-          className="absolute -top-3 -right-3 bg-white rounded-full p-1 shadow-md hover:bg-gray-50"
+          className="absolute top-2 right-2 sm:-top-3 sm:-right-3 bg-white rounded-full p-2 sm:p-1 shadow-md hover:bg-gray-50 min-w-[44px] min-h-[44px] flex items-center justify-center touch-manipulation"
         >
           <svg
             className="w-4 h-4 text-slate-700"
