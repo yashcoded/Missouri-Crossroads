@@ -16,19 +16,15 @@ const nextConfig: NextConfig = {
     COGNITO_CLIENT_SECRET: process.env.COGNITO_CLIENT_SECRET,
   },
   
-  // Suppress ESLint warnings during builds
-  eslint: {
-    ignoreDuringBuilds: false, // Keep ESLint enabled but warnings are suppressed via .eslintrc.json
-  },
   typescript: {
     ignoreBuildErrors: false, // Keep TypeScript checks enabled
   },
   
-  // Note: The "Webpack is configured while Turbopack is not" warning is expected and harmless.
-  // - next-pwa uses webpack internally for service worker generation
+  // Note: next-pwa uses webpack internally for service worker generation
   // - PWA is disabled in development (see line 35), so webpack isn't used during dev
   // - In production builds, webpack is used normally (Turbopack is dev-only)
-  // - This warning can be safely ignored - it doesn't affect functionality
+  // - Adding empty turbopack config to silence the warning in Next.js 16
+  turbopack: {},
 };
 
 const pwaConfig = withPWA({
