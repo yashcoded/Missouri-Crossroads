@@ -120,13 +120,40 @@ jobs:
               ;;
           esac
           
-          gh api repos/${{ github.repository }}/deployments/$DEPLOYMENT_ID/statuses \
-            -X POST \
-            -f state="$DEPLOY_STATE" \
-            -f description="$DESC" \
-            -f environment_url="${{ steps.check-status.outputs.target_url }}"
+          DEPLOYMENT_URL="${{ steps.check-status.outputs.target_url }}"
           
-          echo "Updated deployment status: $DEPLOY_STATE"
+          # Ensure we have a URL, especially for success state
+          if [ -z "$DEPLOYMENT_URL" ] && [ "$DEPLOY_STATE" == "success" ]; then
+            echo "⚠️  Warning: Deployment URL is empty for success state"
+            # Try to get URL from commit statuses as fallback
+            STATUSES=$(gh api repos/${{ github.repository }}/commits/${{ github.event.sha }}/statuses 2>/dev/null || echo "[]")
+            AMPLIFY_STATUS=$(echo "$STATUSES" | jq -r '[.[] | select(.context | ascii_downcase | contains("amplify") or contains("aws") or contains("deploy"))][0]')
+            if [ "$AMPLIFY_STATUS" != "null" ] && [ -n "$AMPLIFY_STATUS" ]; then
+              DEPLOYMENT_URL=$(echo "$AMPLIFY_STATUS" | jq -r '.target_url // empty')
+              if [ -n "$DEPLOYMENT_URL" ] && [ "$DEPLOYMENT_URL" != "null" ]; then
+                echo "✅ Found deployment URL from commit status: $DEPLOYMENT_URL"
+              fi
+            fi
+          fi
+          
+          # Always include environment_url if available
+          if [ -n "$DEPLOYMENT_URL" ]; then
+            gh api repos/${{ github.repository }}/deployments/$DEPLOYMENT_ID/statuses \
+              -X POST \
+              -f state="$DEPLOY_STATE" \
+              -f description="$DESC" \
+              -f environment_url="$DEPLOYMENT_URL"
+            echo "✅ Updated deployment status to $DEPLOY_STATE with URL: $DEPLOYMENT_URL"
+          else
+            if [ "$DEPLOY_STATE" == "success" ]; then
+              echo "⚠️  WARNING: Updating deployment to success state without URL - GitHub may not display the deployment link"
+            fi
+            gh api repos/${{ github.repository }}/deployments/$DEPLOYMENT_ID/statuses \
+              -X POST \
+              -f state="$DEPLOY_STATE" \
+              -f description="$DESC"
+            echo "Updated deployment status: $DEPLOY_STATE (without URL)"
+          fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   
@@ -571,14 +598,34 @@ jobs:
           echo "Updating deployment status: $DEPLOY_STATE"
           echo "Environment URL: ${AMPLIFY_URL:-(none)}"
           
-          # Update deployment status with URL if available
+          # If state is "success" but URL is empty, try to get it from commit statuses
+          if [ "$DEPLOY_STATE" == "success" ] && [ -z "$AMPLIFY_URL" ]; then
+            echo "🔍 State is success but URL is missing, checking commit statuses..."
+            COMMIT_SHA="${{ steps.pr-info.outputs.pr_sha }}"
+            STATUSES=$(gh api repos/${{ github.repository }}/commits/$COMMIT_SHA/statuses 2>/dev/null || echo "[]")
+            AMPLIFY_STATUS=$(echo "$STATUSES" | jq -r '[.[] | select(.context | ascii_downcase | contains("amplify") or contains("aws") or contains("deploy"))][0]')
+            
+            if [ "$AMPLIFY_STATUS" != "null" ] && [ -n "$AMPLIFY_STATUS" ]; then
+              AMPLIFY_URL=$(echo "$AMPLIFY_STATUS" | jq -r '.target_url // empty')
+              if [ -n "$AMPLIFY_URL" ] && [ "$AMPLIFY_URL" != "null" ]; then
+                echo "✅ Found deployment URL from commit status: $AMPLIFY_URL"
+              fi
+            fi
+          fi
+          
+          # Update deployment status - always include URL if available, but especially for success state
           if [ -n "$AMPLIFY_URL" ]; then
             gh api repos/${{ github.repository }}/deployments/$DEPLOYMENT_ID/statuses \
               -X POST \
               -f state="$DEPLOY_STATE" \
               -f description="$DESC" \
               -f environment_url="$AMPLIFY_URL"
+            echo "✅ Updated deployment status to $DEPLOY_STATE with URL: $AMPLIFY_URL"
           else
+            # For success state, we should have a URL - warn if we don't
+            if [ "$DEPLOY_STATE" == "success" ]; then
+              echo "⚠️  WARNING: Updating deployment to success state without URL - GitHub may not display the deployment link"
+            fi
             gh api repos/${{ github.repository }}/deployments/$DEPLOYMENT_ID/statuses \
               -X POST \
               -f state="$DEPLOY_STATE" \
@@ -677,17 +724,38 @@ jobs:
               # Only update if state changed
               if [ "$DEPLOY_STATE" != "$LAST_STATE" ]; then
                 echo "📊 Job status: $JOB_STATUS → GitHub state: $DEPLOY_STATE"
+                
+                # If state is success but URL is empty, try to get it from commit statuses as fallback
+                if [ "$DEPLOY_STATE" == "success" ] && [ -z "$DEPLOYMENT_URL" ]; then
+                  echo "⚠️  State is success but URL is empty, checking commit statuses..."
+                  COMMIT_SHA="${{ github.event.pull_request.head.sha }}"
+                  STATUSES=$(gh api repos/${{ github.repository }}/commits/$COMMIT_SHA/statuses 2>/dev/null || echo "[]")
+                  AMPLIFY_STATUS=$(echo "$STATUSES" | jq -r '[.[] | select(.context | ascii_downcase | contains("amplify") or contains("aws") or contains("deploy"))][0]')
+                  if [ "$AMPLIFY_STATUS" != "null" ] && [ -n "$AMPLIFY_STATUS" ]; then
+                    DEPLOYMENT_URL=$(echo "$AMPLIFY_STATUS" | jq -r '.target_url // empty')
+                    if [ -n "$DEPLOYMENT_URL" ] && [ "$DEPLOYMENT_URL" != "null" ]; then
+                      echo "✅ Found deployment URL from commit status: $DEPLOYMENT_URL"
+                    fi
+                  fi
+                fi
+                
+                # Always include environment_url if available, especially for success state
                 if [ -n "$DEPLOYMENT_URL" ]; then
                   gh api repos/${{ github.repository }}/deployments/$DEPLOYMENT_ID/statuses \
                     -X POST \
                     -f state="$DEPLOY_STATE" \
                     -f description="$DESC" \
                     -f environment_url="$DEPLOYMENT_URL"
+                  echo "✅ Updated deployment status to $DEPLOY_STATE with URL: $DEPLOYMENT_URL"
                 else
+                  if [ "$DEPLOY_STATE" == "success" ]; then
+                    echo "⚠️  WARNING: Updating deployment to success state without URL - GitHub may not display the deployment link"
+                  fi
                   gh api repos/${{ github.repository }}/deployments/$DEPLOYMENT_ID/statuses \
                     -X POST \
                     -f state="$DEPLOY_STATE" \
                     -f description="$DESC"
+                  echo "Updated deployment status: $DEPLOY_STATE (without URL)"
                 fi
                 
                 # Also update commit statuses
