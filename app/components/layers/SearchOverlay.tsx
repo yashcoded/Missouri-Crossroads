@@ -38,7 +38,7 @@ export default function SearchOverlay({
   }, []);
 
   return (
-    <div ref={containerRef} className="absolute left-2 sm:left-4 top-2 sm:top-4 z-50 w-[calc(100%-4rem)] sm:w-80 max-w-[calc(100vw-4rem)] sm:max-w-none">
+    <div ref={containerRef} className="map-search-overlay fixed sm:absolute left-2 sm:left-4 top-[64px] sm:top-4 z-40 w-[calc(100%-1rem)] sm:w-80 max-w-[calc(100vw-1rem)] sm:max-w-none">
       <div className="relative">
         <input
           type="text"

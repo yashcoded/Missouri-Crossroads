@@ -79,7 +79,7 @@ export default function LocationList({
   // Choose positioning: fixed (default) or absolute when inline inside a container
   // On mobile, position below search overlay to avoid overlap
   const posClass = inline
-    ? `absolute ${isRight ? 'top-14 sm:top-4 right-2 sm:right-4' : 'top-14 sm:top-4 left-2 sm:left-4'}`
+    ? `fixed sm:absolute ${isRight ? 'top-0 sm:top-4 right-2 sm:right-4' : 'top-0 sm:top-4 left-2 sm:left-4'}`
     : `fixed top-20 ${isRight ? 'right-2 sm:right-4' : 'left-2 sm:left-4'}`;
 
   // When collapsed, override width so the handle is wide enough to show the label
@@ -101,7 +101,7 @@ export default function LocationList({
 
       <aside
         aria-label="Location list"
-        className={`${posClass} ${asideWidthClass} max-h-[70vh] sm:max-h-[75vh] bg-white/95 backdrop-blur-sm ${collapsed ? 'border-0' : 'border border-gray-200'} rounded-lg shadow-xl z-50 overflow-hidden`}
+        className={`map-location-list ${posClass} ${asideWidthClass} max-h-[70vh] sm:max-h-[75vh] bg-white/95 backdrop-blur-sm ${collapsed ? 'border-0' : 'border border-gray-200'} rounded-lg shadow-xl z-45 sm:z-50 overflow-hidden`}
       >
         {/* Header with collapse control */}
         <div
