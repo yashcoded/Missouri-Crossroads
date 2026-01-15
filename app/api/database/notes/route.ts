@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
     const noteData = await request.json();
     
     // Remove id, createdAt, and updatedAt from request data if present (they'll be generated)
-    const { id, createdAt, updatedAt, ...cleanNoteData } = noteData;
+    const { id: _id, createdAt: _createdAt, updatedAt: _updatedAt, ...cleanNoteData } = noteData;
     
     const note = await DatabaseService.createNote(cleanNoteData);
     
@@ -82,7 +82,7 @@ export async function PUT(request: NextRequest) {
     }
 
     // Don't allow updating createdAt
-    const { createdAt, ...cleanUpdates } = updates;
+    const { createdAt: _createdAt, ...cleanUpdates } = updates;
 
     const note = await DatabaseService.updateNote(id, cleanUpdates);
     

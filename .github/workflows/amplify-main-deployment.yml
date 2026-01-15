@@ -109,12 +109,39 @@ jobs:
           
           # Update deployment status
           DEPLOY_STATE=$(if [ "${{ steps.amplify-url.outputs.state }}" == "success" ]; then echo "success"; else echo "in_progress"; fi)
+          DEPLOYMENT_URL="${{ steps.amplify-url.outputs.deployment_url }}"
           
-          gh api repos/${{ github.repository }}/deployments/$DEPLOYMENT_ID/statuses \
-            -X POST \
-            -f state="$DEPLOY_STATE" \
-            -f description="Deployed to AWS Amplify" \
-            -f environment_url="${{ steps.amplify-url.outputs.deployment_url }}"
+          # If URL is empty but state is success, try to get it from commit statuses
+          if [ "$DEPLOY_STATE" == "success" ] && [ -z "$DEPLOYMENT_URL" ]; then
+            echo "⚠️  State is success but URL is empty, checking commit statuses..."
+            STATUSES=$(gh api repos/${{ github.repository }}/commits/${{ github.sha }}/statuses 2>/dev/null || echo "[]")
+            AMPLIFY_STATUS=$(echo "$STATUSES" | jq -r '[.[] | select(.context | ascii_downcase | contains("amplify"))][0]')
+            if [ "$AMPLIFY_STATUS" != "null" ] && [ -n "$AMPLIFY_STATUS" ]; then
+              DEPLOYMENT_URL=$(echo "$AMPLIFY_STATUS" | jq -r '.target_url // empty')
+              if [ -n "$DEPLOYMENT_URL" ] && [ "$DEPLOYMENT_URL" != "null" ]; then
+                echo "✅ Found deployment URL from commit status: $DEPLOYMENT_URL"
+              fi
+            fi
+          fi
+          
+          # Always include environment_url if available
+          if [ -n "$DEPLOYMENT_URL" ]; then
+            gh api repos/${{ github.repository }}/deployments/$DEPLOYMENT_ID/statuses \
+              -X POST \
+              -f state="$DEPLOY_STATE" \
+              -f description="Deployed to AWS Amplify" \
+              -f environment_url="$DEPLOYMENT_URL"
+            echo "✅ Updated deployment status to $DEPLOY_STATE with URL: $DEPLOYMENT_URL"
+          else
+            if [ "$DEPLOY_STATE" == "success" ]; then
+              echo "⚠️  WARNING: Updating deployment to success state without URL - GitHub may not display the deployment link"
+            fi
+            gh api repos/${{ github.repository }}/deployments/$DEPLOYMENT_ID/statuses \
+              -X POST \
+              -f state="$DEPLOY_STATE" \
+              -f description="Deployed to AWS Amplify"
+            echo "Updated deployment status: $DEPLOY_STATE (without URL)"
+          fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
