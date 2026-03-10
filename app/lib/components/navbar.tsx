@@ -8,6 +8,8 @@ export default function Navbar() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [username, setUsername] = useState<string | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  // PWA install help modal
+  const [showPwaHelp, setShowPwaHelp] = useState(false);
 
   const handleLogout = async () => {
     try {
@@ -159,6 +161,18 @@ export default function Navbar() {
           <div className="flex flex-col">
             {navLinks}
             <div className="border-t border-gray-700 py-3 px-4">
+              <div className="flex flex-col gap-3">
+                <Button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowPwaHelp(true);
+                    setIsMobileMenuOpen(false);
+                  }}
+                  className="bg-transparent border border-blue-500 text-blue-300 hover:bg-blue-600 hover:text-white font-semibold py-2 px-3 rounded shadow min-h-[44px] w-full"
+                >
+                  Install App
+                </Button>
+              </div>
               {isLoggedIn ? (
                 <div className="flex flex-col gap-3">
                   <span
@@ -208,16 +222,94 @@ export default function Navbar() {
             >
               Logout
             </Button>
+            <Button
+              onClick={() => setShowPwaHelp(true)}
+              className="bg-transparent border border-blue-500 text-blue-300 hover:bg-blue-600 hover:text-white font-semibold py-2 px-3 rounded shadow min-h-[44px]"
+              aria-label="Show install instructions"
+            >
+              Install App
+            </Button>
           </div>
         ) : (
-          <Button
-            onClick={() => (window.location.href = "/test-aws")}
-            className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 border border-blue-700 rounded shadow min-h-[44px]"
-          >
-            Login
-          </Button>
+          <div className="flex items-center gap-3">
+            <Button
+              onClick={() => setShowPwaHelp(true)}
+              className="bg-transparent border border-blue-500 text-blue-300 hover:bg-blue-600 hover:text-white font-semibold py-2 px-3 rounded shadow min-h-[44px]"
+              aria-label="Show install instructions"
+            >
+              Install App
+            </Button>
+            <Button
+              onClick={() => (window.location.href = "/test-aws")}
+              className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 border border-blue-700 rounded shadow min-h-[44px]"
+            >
+              Login
+            </Button>
+          </div>
         )}
       </div>
+      {/* PWA install instructions modal */}
+      {showPwaHelp && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="pwa-help-title"
+        >
+          <div className="bg-white dark:bg-gray-900 text-gray-900 dark:text-white rounded-lg shadow-xl max-w-md w-full overflow-hidden">
+            <div className="flex items-start justify-between p-4 border-b border-gray-200 dark:border-gray-700">
+              <div>
+                <h3 id="pwa-help-title" className="text-lg font-semibold">Install Missouri Crossroads</h3>
+                <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">Quick steps to add the app to your device.</p>
+              </div>
+              <button
+                onClick={() => setShowPwaHelp(false)}
+                aria-label="Close install instructions"
+                className="ml-4 rounded-full p-2 hover:bg-gray-100 dark:hover:bg-gray-800"
+              >
+                <svg className="w-5 h-5 text-gray-700 dark:text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="p-4 space-y-3">
+              <div className="flex items-start gap-3">
+                <div className="flex-none">
+                  <div className="w-10 h-10 rounded-md bg-blue-50 text-blue-600 flex items-center justify-center">
+                    <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v14M5 12h14" />
+                    </svg>
+                  </div>
+                </div>
+                <div className="flex-1">
+                  <h4 className="font-medium">Android / Desktop (Chrome/Edge)</h4>
+                  <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">Use the browser install prompt or click the menu (⋮) → "Install app" / use the install icon in the address bar. After installing, the app runs standalone and works offline.</p>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3">
+                <div className="flex-none">
+                  <div className="w-10 h-10 rounded-md bg-blue-50 text-blue-600 flex items-center justify-center">
+                    <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7h16M4 12h16M4 17h16" />
+                    </svg>
+                  </div>
+                </div>
+                <div className="flex-1">
+                  <h4 className="font-medium">iOS (Safari)</h4>
+                  <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">iOS doesn't support the automatic prompt. Open the Share menu (▤) and choose <strong>"Add to Home Screen"</strong>. Then open the app from your home screen.</p>
+                </div>
+              </div>
+
+              <div className="pt-2">
+                <Button onClick={() => setShowPwaHelp(false)} className="w-full bg-blue-600 hover:bg-blue-700 text-white">
+                  Got it
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </nav>
   );
 }

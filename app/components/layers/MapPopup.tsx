@@ -245,6 +245,21 @@ export default function MapPopup(props: any) {
     );
   };
 
+  // normalize contact-like fields: return a trimmed string or null for
+  // placeholders like "N/A", "n/a", "NA", "unknown", or dash-only values.
+  const normalizeContact = (v: any): string | null => {
+    if (v == null) return null;
+    const s = String(v).trim();
+    if (s === '') return null;
+    const low = s.toLowerCase();
+    // common placeholder patterns we want to ignore
+    if (low === 'n/a' || low === 'na' || low === 'unknown' || low === 'none')
+      return null;
+    if (/^n\/?a$/i.test(s)) return null; // n/a, N/A
+    if (/^[-—–]+$/.test(s)) return null; // '---' or em-dash
+    return s;
+  };
+
   const basicContent = (
     <div className="p-3 max-w-sm bg-white rounded shadow">
       <h3 className="font-bold text-lg mb-2">
@@ -268,14 +283,11 @@ export default function MapPopup(props: any) {
           <span className="font-semibold">Contact:</span>
           <span className="ml-2 block wrap-break-word break-all whitespace-normal max-w-full">
             {(() => {
-              const phone = location.phone && String(location.phone).trim();
-              const email = location.email && String(location.email).trim();
-              const website =
-                location.website && String(location.website).trim();
-              const facebook =
-                location.facebook && String(location.facebook).trim();
-              const instagram =
-                location.instagram && String(location.instagram).trim();
+              const phone = normalizeContact(location.phone);
+              const email = normalizeContact(location.email);
+              const website = normalizeContact(location.website);
+              const facebook = normalizeContact(location.facebook);
+              const instagram = normalizeContact(location.instagram);
 
               const makeUrl = (u: string) =>
                 /^https?:\/\//i.test(u) ? u : `https://${u}`;

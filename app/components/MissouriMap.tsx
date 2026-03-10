@@ -513,8 +513,8 @@ export default function MissouriMap({ fileName }: MissouriMapProps) {
 
   return (
     <div className="space-y-0 sm:space-y-2 md:space-y-4">
-      {/* Map - Use viewport height minus navbar on mobile for better mobile experience */}
-      <div className="relative h-[calc(100vh-60px)] sm:h-[500px] md:h-[600px] w-full rounded-none sm:rounded-lg md:rounded-xl overflow-hidden border-0 sm:border-2 md:border-4 border-blue-300 shadow-none sm:shadow-lg md:shadow-2xl">
+      {/* Map - make map fill the full viewport height */}
+      <div className="relative h-screen w-full rounded-none sm:rounded-lg md:rounded-xl overflow-hidden border-0 sm:border-2 md:border-4 border-blue-300 shadow-none sm:shadow-lg md:shadow-2xl">
         <GoogleMap
           mapContainerStyle={{ width: '100%', height: '100%' }}
           center={mapCenter}
@@ -525,13 +525,18 @@ export default function MissouriMap({ fileName }: MissouriMapProps) {
             mapTypeControl: false,
             // force the default map type to roadmap (optional)
             mapTypeId: 'roadmap',
+            // Enable pegman / Street View control
             streetViewControl: true,
+            // Hide fullscreen control
             fullscreenControl: false,
-            // Mobile-friendly controls
-            zoomControl: true,
+            // Mobile-friendly controls: hide zoom buttons
+            zoomControl: false,
+            // Hide pan/rotate controls (remove move/rotate UI elements)
+            panControl: false,
+            rotateControl: false,
             // Better touch interaction on mobile
             gestureHandling: 'greedy',
-            // Disable some controls on mobile for cleaner UI
+            // Keep default UI enabled except for the disabled controls above
             disableDefaultUI: false,
           }}
         >
@@ -574,9 +579,7 @@ export default function MissouriMap({ fileName }: MissouriMapProps) {
       {loadingViewport && (
         <div className="fixed top-16 sm:top-4 right-2 sm:right-4 bg-blue-600 text-white px-3 sm:px-4 py-2 rounded-lg shadow-lg z-10 flex items-center space-x-2 text-xs sm:text-sm">
           <div className="animate-spin rounded-full h-3 w-3 sm:h-4 sm:w-4 border-2 border-white border-t-transparent"></div>
-          <span className="font-medium">
-            Loading nearby locations...
-          </span>
+          <span className="font-medium">Loading nearby locations...</span>
         </div>
       )}
 
@@ -585,7 +588,9 @@ export default function MissouriMap({ fileName }: MissouriMapProps) {
         {searchQuery ? (
           <div className="text-sm sm:text-base md:text-lg">
             <div className="flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2">
-              <span className="font-bold text-blue-800">🔍 Search Results:</span>
+              <span className="font-bold text-blue-800">
+                🔍 Search Results:
+              </span>
               <span className="font-bold text-blue-600 text-lg sm:text-xl">
                 {filteredLocations.length}
               </span>
