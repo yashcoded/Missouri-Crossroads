@@ -1,5 +1,5 @@
 'use client';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 // Note: we intentionally do not import server resolver here because the
 // browser cannot call id.loc.gov directly (CORS). Instead the badge will
 // call our server-side proxy at `/api/loc/subject` which uses the resolver
@@ -33,6 +33,8 @@ export interface LocationData {
   geoCoordinatesDD?: string;
   geoCoordinatesDMM?: string;
   needsGeocoding?: boolean;
+  // structured category pairs provided by server: { raw, label, url? }
+  categoryPairs?: { raw: string; label: string; url?: string }[];
 }
 
 interface MapPopupProps {
@@ -70,147 +72,16 @@ const LABELS: Record<string, string> = {
 export default function MapPopup(props: any) {
   const { location, detailed = false, onClose, onDetails } = props;
   if (!location || location.lat == null || location.lng == null) return null;
-  console.log('Rendering MapPopup for location:', location);
-
-  // Category badge component — resolves LOC URL asynchronously and avoids
-  // calling async functions during render (prevents href becoming a Promise).
-  const CategoryBadge: React.FC<{ c: string; small?: boolean }> = ({
-    c,
-    small,
-  }) => {
-    const [locUrl, setLocUrl] = useState<string | null | undefined>(undefined);
-
-    useEffect(() => {
-      let mounted = true;
-      function buildSearchFallback(term: string) {
-        const raw = String(term || '').trim();
-        const q0 = encodeURIComponent(raw).replace(/%20/g, '+');
-        const parts = [
-          `q=${q0}`,
-          `q=${encodeURIComponent('rdftype:SimpleType')}`,
-          `q=${encodeURIComponent('rdftype:Authority')}`,
-          `q=${encodeURIComponent('cs:http://id.loc.gov/authorities/subjects')}`,
-          `q=${encodeURIComponent('memberOf:http://id.loc.gov/authorities/subjects/collection_LCSH_General')}`,
-        ];
-        return `https://id.loc.gov/search/?${parts.join('&')}`;
-      }
-      (async () => {
-        try {
-          // Try sessionStorage first to avoid any network RTT if available
-          const cacheKey = 'locUrlCache_v1';
-          const raw =
-            typeof window !== 'undefined'
-              ? window.sessionStorage.getItem(cacheKey)
-              : null;
-          const cache = raw
-            ? (JSON.parse(raw) as Record<string, string | null>)
-            : {};
-          if (cache && Object.prototype.hasOwnProperty.call(cache, c)) {
-            if (!mounted) return;
-            const val = cache[c] ?? buildSearchFallback(c);
-            setLocUrl(val);
-            return;
-          }
-
-          // Fall back to batch endpoint (POST) which can later be used to
-          // resolve many queries at once. We send a single-item array here
-          // but map-shell can call the same endpoint with many items.
-          const res = await fetch('/api/loc/subjects', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ qs: [c] }),
-          });
-          if (!mounted) return;
-          if (!res.ok) {
-            const fallback = buildSearchFallback(c);
-            setLocUrl(fallback);
-            return;
-          }
-          const body = await res.json();
-          const url = body?.results?.[c] ?? null;
-
-          // persist in sessionStorage for quick reuse during this session
-          const newCache = { ...(cache || {}) } as Record<
-            string,
-            string | null
-          >;
-          newCache[c] = url ?? null;
-          try {
-            window.sessionStorage.setItem(cacheKey, JSON.stringify(newCache));
-          } catch (e) {
-            // ignore sessionStorage errors
-          }
-
-          const final = url ?? buildSearchFallback(c);
-          setLocUrl(final);
-        } catch (e) {
-          if (!mounted) return;
-          const fallback = buildSearchFallback(c);
-          setLocUrl(fallback);
-        }
-      })();
-      return () => {
-        mounted = false;
-      };
-    }, [c]);
-
-    const baseClass = small
-      ? 'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-800 border border-blue-200'
-      : 'inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-blue-50 text-blue-800 border border-blue-100';
-
-    if (locUrl) {
-      const isAuthority =
-        typeof locUrl === 'string' &&
-        /id\.loc\.gov\/authorities\/subjects\/sh/.test(locUrl);
-      return (
-        <a
-          href={locUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className={`${baseClass} hover:underline`}
-          title={`Look up ${c} on LOC`}
-        >
-          {isAuthority ? (
-            <span className="inline-flex items-center gap-2">
-              <svg
-                className="w-3 h-3 text-green-600"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth={2}
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M5 13l4 4L19 7"
-                />
-              </svg>
-              <span>{c}</span>
-            </span>
-          ) : (
-            <span className="inline-flex items-center gap-2">
-              <svg
-                className="w-3 h-3 text-gray-500"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth={2}
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M13 16h-1v-4h-1"
-                />
-              </svg>
-              <span>{c}</span>
-            </span>
-          )}
-        </a>
-      );
+  // Log when the location prop changes so we can see updates from refresh
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Rendering MapPopup for location:', location);
+      console.log('MapPopup categoryPairs:', (location as any)?.categoryPairs);
     }
+  }, [location]);
 
-    return <span className={baseClass}>{c}</span>;
-  };
+  // CategoryBadge and LOC search behavior removed — categories are rendered
+  // strictly from server-provided `categoryPairs` (label + url).
   // helper to render values with simple linkification for urls and emails
   const renderValue = (val: any) => {
     if (val == null) return null;
@@ -365,21 +236,34 @@ export default function MapPopup(props: any) {
 
       {/* Categories */}
       <div className="flex flex-wrap gap-2 mb-3">
-        {(() => {
-          const catsRaw = [
-            location.siteTypeCategory,
-            location.tertiaryCategories,
-          ]
-            .filter(Boolean)
-            .join(', ');
-          const cats = catsRaw
-            .split(/[,;/|]+/)
-            .map(s => s.trim())
-            .filter(Boolean);
-          return cats.length > 0
-            ? cats.map((c, i) => <CategoryBadge key={i} c={c} small />)
-            : null;
-        })()}
+        {location.categoryPairs && location.categoryPairs.length > 0
+          ? location.categoryPairs.map(
+              (p: { raw: string; label: string; url?: string }, i: number) => {
+                const badge = (
+                  <span
+                    key={`cat-${i}`}
+                    className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-800 border border-blue-200"
+                  >
+                    {p.label}
+                  </span>
+                );
+                if (p.url) {
+                  return (
+                    <a
+                      key={`link-${i}`}
+                      href={p.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="hover:underline"
+                    >
+                      {badge}
+                    </a>
+                  );
+                }
+                return badge;
+              }
+            )
+          : null}
       </div>
 
       {/* Bottom actions: Directions (left) and Details (right) */}
@@ -463,21 +347,34 @@ export default function MapPopup(props: any) {
 
       {/* categories */}
       <div className="flex flex-wrap gap-2 mb-4">
-        {(() => {
-          const catsRaw = [
-            location.siteTypeCategory,
-            location.tertiaryCategories,
-          ]
-            .filter(Boolean)
-            .join(', ');
-          const cats = catsRaw
-            .split(/[,;/|]+/)
-            .map(s => s.trim())
-            .filter(Boolean);
-          return cats.length > 0
-            ? cats.map((c, i) => <CategoryBadge key={i} c={c} />)
-            : null;
-        })()}
+        {location.categoryPairs && location.categoryPairs.length > 0
+          ? location.categoryPairs.map(
+              (p: { raw: string; label: string; url?: string }, i: number) => {
+                const badge = (
+                  <span
+                    key={`cat-${i}`}
+                    className="inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-blue-50 text-blue-800 border border-blue-100"
+                  >
+                    {p.label}
+                  </span>
+                );
+                if (p.url) {
+                  return (
+                    <a
+                      key={`link-${i}`}
+                      href={p.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="hover:underline"
+                    >
+                      {badge}
+                    </a>
+                  );
+                }
+                return badge;
+              }
+            )
+          : null}
       </div>
 
       <div className="space-y-6">
@@ -592,9 +489,9 @@ export default function MapPopup(props: any) {
     );
   }
 
-  // basic panel rendered in bottom-left of the map viewport
+  // basic panel rendered in bottom-right of the map viewport
   return (
-    <div className="absolute left-2 sm:left-4 bottom-2 sm:bottom-4 z-50 w-[calc(100%-4rem)] sm:w-80 max-w-[calc(100vw-4rem)] sm:max-w-none">
+    <div className="absolute right-2 sm:right-4 bottom-2 sm:bottom-4 z-50 w-[calc(100%-4rem)] sm:w-80 max-w-[calc(100vw-4rem)] sm:max-w-none">
       <div className="relative p-3 sm:p-4 bg-white rounded-lg sm:rounded shadow-lg sm:shadow">
         <button
           aria-label="Close popup"

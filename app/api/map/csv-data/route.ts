@@ -515,12 +515,15 @@ async function parseCSV(csvText: string, centerLat?: string, centerLng?: string,
         // Geo raw fields - keep but map to friendly names if present
         'geocoordinates (dd)': 'geoCoordinatesDD',
         'geocoordinates (dmm)': 'geoCoordinatesDMM',
+        // Custom columns from CSV
+        'categories_reformat': 'categoriesReformat',
+        'links': 'links',
       };
 
       // Build a cleaned location object: copy canonical fields we already populated
       const cleaned: any = {};
       // First, copy the canonical fields we already populated (organizationName, address, contact fields, etc.)
-      for (const k of ['id','organizationName','address','siteTypeCategory','tertiaryCategories','yearEstablished','builtPlaced','lat','lng','needsGeocoding','fullAddress','phone','email','facebook','instagram','website']) {
+      for (const k of ['id','organizationName','address','siteTypeCategory','tertiaryCategories','categoriesReformat','links','yearEstablished','builtPlaced','lat','lng','needsGeocoding','fullAddress','phone','email','facebook','instagram','website']) {
         if ((location as any)[k] !== undefined) cleaned[k] = (location as any)[k];
       }
 
@@ -555,6 +558,66 @@ async function parseCSV(csvText: string, centerLat?: string, centerLng?: string,
       if (process.env.NODE_ENV === 'development') {
         if (cleaned.phone) console.log(`🔍 Mapped phone -> ${String(cleaned.phone).slice(0,60)}`);
         if (cleaned.email) console.log(`🔍 Mapped email -> ${String(cleaned.email).slice(0,60)}`);
+      }
+
+      // Server-side: parse semicolon-separated CATEGORIES_REFORMAT and LINKS into structured pairs
+      // so the frontend can render badges and open links directly.
+      try {
+        const splitSemicolon = (s?: string) => (s || '').split(';').map(x => x.trim()).filter(Boolean);
+        const labelFrom = (item: string) => {
+          const parts = item.split(':').map(p => p.trim());
+          return parts.length > 1 ? parts.slice(1).join(':').trim() : item;
+        };
+
+        const normalizeUrl = (raw?: string): string | undefined => {
+          if (!raw) return undefined;
+          let candidate = raw.trim();
+          if (!candidate) return undefined;
+
+          // If there's no scheme, try to guess and prepend https:// for common cases
+          if (!/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(candidate)) {
+            if (candidate.startsWith('//')) candidate = 'https:' + candidate;
+            else if (candidate.startsWith('www.')) candidate = 'https://' + candidate;
+            else if (/^[\w.-]+\.[a-z]{2,}($|\/)/i.test(candidate)) candidate = 'https://' + candidate;
+          }
+
+          try {
+            const u = new URL(candidate);
+            if (u.protocol === 'http:' || u.protocol === 'https:') return u.toString();
+          } catch (_e) {
+            return undefined;
+          }
+          return undefined;
+        };
+
+  // Only use the explicit CATEGORIES_REFORMAT column — no fallbacks as requested
+  const catSource = cleaned.categoriesReformat || '';
+        const categories = splitSemicolon(catSource);
+        const linksRaw = splitSemicolon(cleaned.links || '');
+        const linksNormalized = linksRaw.map(l => normalizeUrl(l)).filter(Boolean) as string[];
+
+        const categoryPairs: { raw: string; label: string; url?: string }[] = [];
+        if (categories.length > 0) {
+          if (linksNormalized.length === categories.length) {
+            for (let i = 0; i < categories.length; i++) {
+              categoryPairs.push({ raw: categories[i], label: labelFrom(categories[i]), url: linksNormalized[i] });
+            }
+          } else if (linksNormalized.length === 1) {
+            for (const c of categories) categoryPairs.push({ raw: c, label: labelFrom(c), url: linksNormalized[0] });
+          } else {
+            for (let i = 0; i < categories.length; i++) {
+              categoryPairs.push({ raw: categories[i], label: labelFrom(categories[i]), url: linksNormalized[i] });
+            }
+          }
+        }
+
+        // Attach structured pairs and arrays to cleaned object for easy frontend consumption
+        cleaned.categoryPairs = categoryPairs;
+        cleaned.categories = categories;
+        cleaned.linksArray = linksNormalized;
+      } catch (err) {
+        // Don't let parsing errors break the entire response
+        if (process.env.NODE_ENV === 'development') console.log('⚠️ categoryPairs parse error', err);
       }
 
       // push the cleaned object
@@ -840,17 +903,22 @@ async function parseCSV(csvText: string, centerLat?: string, centerLng?: string,
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const fileName = searchParams.get('fileName') || 'metadata-1759267238657.csv';
-    const centerLat = searchParams.get('centerLat');
-    const centerLng = searchParams.get('centerLng');
-    const isViewport = searchParams.get('viewport') === 'true';
+  const fileName = searchParams.get('fileName') || 'metadata-1759267238658.csv';
+  const centerLat = searchParams.get('centerLat');
+  const centerLng = searchParams.get('centerLng');
+  const isViewport = searchParams.get('viewport') === 'true';
+  // Optional cache bypass for development/testing: ?refresh=true
+  // NOTE: ignore refresh requests in production — only honor in non-production environments
+  const refreshRequested = searchParams.get('refresh') === 'true';
+  const allowRefresh = process.env.NODE_ENV !== 'production';
+  const refresh = refreshRequested && allowRefresh;
     
     // Create cache key based on parameters
     const cacheKey = `${fileName}_${centerLat || 'all'}_${centerLng || 'all'}_${isViewport ? 'viewport' : 'normal'}`;
     
     // Check cache first
     const cached = cache.get(cacheKey);
-    if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
+    if (cached && !refresh && Date.now() - cached.timestamp < CACHE_DURATION) {
       console.log(`🚀 Cache hit for ${cacheKey} (${cached.locationCount} locations)`);
       return NextResponse.json({
         success: true,
@@ -860,6 +928,12 @@ export async function GET(request: NextRequest) {
         source: 'cache',
         timestamp: new Date().toISOString()
       });
+    }
+    if (refreshRequested && !allowRefresh) {
+      // Do not perform a cache bypass in production; log minimally for visibility
+      console.log(`🔒 Ignoring refresh request for ${cacheKey} in production`);
+    } else if (refresh) {
+      console.log(`🔁 Refresh requested for ${cacheKey} — bypassing cache`);
     }
     
     if (process.env.NODE_ENV === 'development') {

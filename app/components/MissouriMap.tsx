@@ -2,7 +2,8 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { GoogleMap, useJsApiLoader } from '@react-google-maps/api';
-import LocationList from './layers/LocationList';
+// LocationList is now embedded in SearchOverlay; the map will broadcast locations via
+// a window event so the overlay can render them.
 import MapPopup from './layers/MapPopup';
 import SearchOverlay from './layers/SearchOverlay';
 
@@ -390,6 +391,14 @@ export default function MissouriMap({ fileName }: MissouriMapProps) {
     if (mapRef.current) createMarkers(mapRef.current, filteredLocations, true);
   }, [filteredLocations, createMarkers]);
 
+  // Broadcast filtered locations so the SearchOverlay (which now contains the
+  // LocationList) can render them. We also set a global variable for initial
+  // read by the overlay.
+  useEffect(() => {
+    // (Previously used an event-based bridge to the overlay; now we pass
+    // `filteredLocations` as props to `SearchOverlay` so no broadcast is needed.)
+  }, [filteredLocations]);
+
   useEffect(() => {
     return () => {
       clearMarkers();
@@ -498,6 +507,22 @@ export default function MissouriMap({ fileName }: MissouriMapProps) {
     }
   }, []);
 
+  // Register handler for selections coming from the SearchOverlay's LocationList
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent)?.detail;
+      if (detail && detail.location) {
+        handleLocationSelect(detail.location);
+      }
+    };
+    window.addEventListener('search-overlay-select', handler as EventListener);
+    return () =>
+      window.removeEventListener(
+        'search-overlay-select',
+        handler as EventListener
+      );
+  }, [handleLocationSelect]);
+
   // Render fallbacks
   if (loadError)
     return (
@@ -553,14 +578,7 @@ export default function MissouriMap({ fileName }: MissouriMapProps) {
           )}
         </GoogleMap>
         {/* Inline location list overlay inside the map viewport */}
-        <LocationList
-          locations={filteredLocations}
-          selectedId={selectedLocation?.id ?? selectedLocationId}
-          onSelect={handleLocationSelect}
-          position="right"
-          width="w-[calc(100%-1rem)] sm:w-80"
-          inline={true}
-        />
+        {/* LocationList moved into SearchOverlay; we broadcast filteredLocations via a window event. */}
 
         {/* Search overlay (left side). Filters appear when input is focused */}
         <SearchOverlay
@@ -572,6 +590,8 @@ export default function MissouriMap({ fileName }: MissouriMapProps) {
           setShowLibraries={setShowLibraries}
           showOthers={showOthers}
           setShowOthers={setShowOthers}
+          locations={filteredLocations}
+          onSelect={handleLocationSelect}
         />
       </div>
 

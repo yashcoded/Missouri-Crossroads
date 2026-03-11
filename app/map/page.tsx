@@ -4,7 +4,8 @@ import React, { useState } from 'react';
 import MissouriMap from '../components/MissouriMap';
 
 export default function MapPage() {
-  const [selectedFile] = useState('metadata-1759267238657.csv');
+  // Default to the newer metadata file that includes categoryPairs
+  const [selectedFile] = useState('metadata-1759267238658.csv');
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-green-50">
