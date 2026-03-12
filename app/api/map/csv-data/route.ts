@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
 import { promises as fs } from 'fs';
 import path from 'path';
+import { parseCategoryPairs } from '../../../lib/parseCategoryPairs';
 
 // IMPORTANT: AWS credentials are server-side only and should NEVER use NEXT_PUBLIC_ prefix
 const accessKeyId = process.env.AWS_ACCESS_KEY_ID || process.env.AMPLIFY_AWS_ACCESS_KEY_ID || '';
@@ -560,70 +561,21 @@ async function parseCSV(csvText: string, centerLat?: string, centerLng?: string,
         if (cleaned.email) console.log(`🔍 Mapped email -> ${String(cleaned.email).slice(0,60)}`);
       }
 
-      // Server-side: parse semicolon-separated CATEGORIES_REFORMAT and LINKS into structured pairs
-      // so the frontend can render badges and open links directly.
-      try {
-        const splitSemicolon = (s?: string) => (s || '').split(';').map(x => x.trim()).filter(Boolean);
-        const labelFrom = (item: string) => {
-          const parts = item.split(':').map(p => p.trim());
-          return parts.length > 1 ? parts.slice(1).join(':').trim() : item;
-        };
+        // Server-side: parse semicolon-separated CATEGORIES_REFORMAT and LINKS into structured pairs
+        // so the frontend can render badges and open links directly.
+        try {
+          // Reusable helper exported below for unit testing
+          const catSource = cleaned.categoriesReformat || '';
+          const pairs = parseCategoryPairs(catSource, cleaned.links || '');
 
-        const normalizeUrl = (raw?: string): string | undefined => {
-          if (!raw) return undefined;
-          let candidate = raw.trim();
-          if (!candidate) return undefined;
-
-          // If there's no scheme, try to guess and prepend https:// for common cases
-          if (!/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(candidate)) {
-            if (candidate.startsWith('//')) candidate = 'https:' + candidate;
-            else if (candidate.startsWith('www.')) candidate = 'https://' + candidate;
-            else if (/^[\w.-]+\.[a-z]{2,}($|\/)/i.test(candidate)) candidate = 'https://' + candidate;
-          }
-
-          try {
-            const u = new URL(candidate);
-            if (u.protocol === 'http:' || u.protocol === 'https:') return u.toString();
-          } catch (_e) {
-            return undefined;
-          }
-          return undefined;
-        };
-
-        // Only use the explicit CATEGORIES_REFORMAT column — no fallbacks as requested
-        const catSource = cleaned.categoriesReformat || '';
-        const categories = splitSemicolon(catSource);
-        const linksRaw = splitSemicolon(cleaned.links || '');
-        const linksNormalized = linksRaw.map(l => normalizeUrl(l)).filter(Boolean) as string[];
-
-        const categoryPairs: { raw: string; label: string; url?: string }[] = [];
-        if (categories.length > 0) {
-          if (linksNormalized.length === categories.length) {
-            for (let i = 0; i < categories.length; i++) {
-              categoryPairs.push({ raw: categories[i], label: labelFrom(categories[i]), url: linksNormalized[i] });
-            }
-          } else if (linksNormalized.length === 1) {
-            for (const c of categories) categoryPairs.push({ raw: c, label: labelFrom(c), url: linksNormalized[0] });
-          } else {
-            // Mismatch between categories and links arrays — prefer undefined for missing URLs
-            if (process.env.NODE_ENV === 'development') {
-              console.warn('⚠️ Mismatch between categories and linksNormalized lengths', { categoriesLength: categories.length, linksNormalizedLength: linksNormalized.length });
-            }
-            for (let i = 0; i < categories.length; i++) {
-              const url = i < linksNormalized.length ? linksNormalized[i] : undefined;
-              categoryPairs.push({ raw: categories[i], label: labelFrom(categories[i]), url });
-            }
-          }
+          // Attach structured pairs and arrays to cleaned object for easy frontend consumption
+          cleaned.categoryPairs = pairs;
+          cleaned.categories = pairs.map(p => p.raw);
+          cleaned.linksArray = pairs.map(p => p.url).filter(Boolean) as string[];
+        } catch (err) {
+          // Don't let parsing errors break the entire response
+          if (process.env.NODE_ENV === 'development') console.log('⚠️ categoryPairs parse error', err);
         }
-
-        // Attach structured pairs and arrays to cleaned object for easy frontend consumption
-        cleaned.categoryPairs = categoryPairs;
-        cleaned.categories = categories;
-        cleaned.linksArray = linksNormalized;
-      } catch (err) {
-        // Don't let parsing errors break the entire response
-        if (process.env.NODE_ENV === 'development') console.log('⚠️ categoryPairs parse error', err);
-      }
 
       // push the cleaned object
       locations.push(cleaned);
@@ -904,6 +856,11 @@ async function parseCSV(csvText: string, centerLat?: string, centerLng?: string,
   
   return finalLocations;
 }
+
+// Exported helper for parsing category pairs from CATEGORIES_REFORMAT and LINKS
+// parseCategoryPairs is now a pure utility imported from app/lib so tests can
+// import the parser without triggering server-side initializations in this
+// route module.
 
 export async function GET(request: NextRequest) {
   try {

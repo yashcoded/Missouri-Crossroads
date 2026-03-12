@@ -116,7 +116,9 @@ export default function MapPopup(props: MapPopupProps) {
     }
 
     return (
-      <div className="whitespace-pre-wrap wrap-break-word text-zinc-300">{s}</div>
+      <div className="whitespace-pre-wrap wrap-break-word text-zinc-300">
+        {s}
+      </div>
     );
   };
 

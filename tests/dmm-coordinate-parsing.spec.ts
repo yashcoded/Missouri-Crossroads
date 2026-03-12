@@ -11,7 +11,7 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Coordinate Parsing - API Tests', () => {
   test('should parse multiple coordinate formats successfully', async ({ request }) => {
-    const response = await request.get('/api/map/csv-data?fileName=metadata-1759267238657.csv');
+  const response = await request.get('/api/map/csv-data?fileName=metadata-1759267238658.csv');
     expect(response.ok()).toBe(true);
     
     const data = await response.json();
@@ -33,7 +33,7 @@ test.describe('Coordinate Parsing - API Tests', () => {
 
   test('should handle reversed coordinate order', async ({ request }) => {
     // Test cases like: "W92°44'34 N38°58'25" (longitude first)
-    const response = await request.get('/api/map/csv-data?fileName=metadata-1759267238657.csv');
+  const response = await request.get('/api/map/csv-data?fileName=metadata-1759267238658.csv');
     const data = await response.json();
     
     expect(data.success).toBe(true);
@@ -53,7 +53,7 @@ test.describe('Coordinate Parsing - API Tests', () => {
 
   test('should handle DMS format with seconds', async ({ request }) => {
     // Test cases like: "N39° 11' 23.6" W93° 52' 33.8"
-    const response = await request.get('/api/map/csv-data?fileName=metadata-1759267238657.csv');
+  const response = await request.get('/api/map/csv-data?fileName=metadata-1759267238658.csv');
     const data = await response.json();
     
     // Should parse DMS format correctly
@@ -63,7 +63,7 @@ test.describe('Coordinate Parsing - API Tests', () => {
   });
 
   test('should handle decimal coordinate pairs', async ({ request }) => {
-    const response = await request.get('/api/map/csv-data?fileName=metadata-1759267238657.csv');
+  const response = await request.get('/api/map/csv-data?fileName=metadata-1759267238658.csv');
     const data = await response.json();
     
     // Some rows have decimal coordinates that should be parsed
@@ -76,7 +76,7 @@ test.describe('Coordinate Parsing - API Tests', () => {
 
 test.describe('Coordinate Validation', () => {
   test('should reject coordinates outside Missouri bounds', async ({ request }) => {
-    const response = await request.get('/api/map/csv-data?fileName=metadata-1759267238657.csv');
+  const response = await request.get('/api/map/csv-data?fileName=metadata-1759267238658.csv');
     const data = await response.json();
     
     // Filter locations with coordinates
@@ -95,7 +95,7 @@ test.describe('Coordinate Validation', () => {
   });
 
   test('should validate latitude is between -90 and 90', async ({ request }) => {
-    const response = await request.get('/api/map/csv-data?fileName=metadata-1759267238657.csv');
+  const response = await request.get('/api/map/csv-data?fileName=metadata-1759267238658.csv');
     const data = await response.json();
     
     data.locations.forEach((loc: any) => {
@@ -107,7 +107,7 @@ test.describe('Coordinate Validation', () => {
   });
 
   test('should validate longitude is between -180 and 180', async ({ request }) => {
-    const response = await request.get('/api/map/csv-data?fileName=metadata-1759267238657.csv');
+  const response = await request.get('/api/map/csv-data?fileName=metadata-1759267238658.csv');
     const data = await response.json();
     
     data.locations.forEach((loc: any) => {
@@ -121,7 +121,7 @@ test.describe('Coordinate Validation', () => {
 
 test.describe('Data Quality', () => {
   test('should have organization names for all locations', async ({ request }) => {
-    const response = await request.get('/api/map/csv-data?fileName=metadata-1759267238657.csv');
+  const response = await request.get('/api/map/csv-data?fileName=metadata-1759267238658.csv');
     const data = await response.json();
     
     // Most locations should have names
@@ -133,7 +133,7 @@ test.describe('Data Quality', () => {
   });
 
   test('should categorize locations correctly', async ({ request }) => {
-    const response = await request.get('/api/map/csv-data?fileName=metadata-1759267238657.csv');
+  const response = await request.get('/api/map/csv-data?fileName=metadata-1759267238658.csv');
     const data = await response.json();
     
     // All locations should have a category field
@@ -154,7 +154,7 @@ test.describe('Data Quality', () => {
   });
 
   test('should handle special characters in location names', async ({ request }) => {
-    const response = await request.get('/api/map/csv-data?fileName=metadata-1759267238657.csv');
+  const response = await request.get('/api/map/csv-data?fileName=metadata-1759267238658.csv');
     const data = await response.json();
     
     // Should not have HTML entities or broken encoding
@@ -170,11 +170,11 @@ test.describe('Data Quality', () => {
 test.describe('Performance', () => {
   test('should cache CSV data for subsequent requests', async ({ request }) => {
     // First request (may be slow due to parsing)
-    await request.get('/api/map/csv-data?fileName=metadata-1759267238657.csv');
+  await request.get('/api/map/csv-data?fileName=metadata-1759267238658.csv');
     
     // Second request (should be faster - cached)
     const start2 = Date.now();
-    const response = await request.get('/api/map/csv-data?fileName=metadata-1759267238657.csv');
+  const response = await request.get('/api/map/csv-data?fileName=metadata-1759267238658.csv');
     const duration2 = Date.now() - start2;
     
     // Cached request should be reasonably fast (< 500ms)

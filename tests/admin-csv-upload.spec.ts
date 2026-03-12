@@ -49,7 +49,7 @@ test.describe('CSV Upload API', () => {
 
 test.describe('CSV Data API - Caching', () => {
   test('should use cache for repeated requests', async ({ request }) => {
-    const fileName = 'metadata-1759267238657.csv';
+  const fileName = 'metadata-1759267238658.csv';
     
     // First request
     const response1 = await request.get(`/api/map/csv-data?fileName=${fileName}`);
@@ -67,7 +67,7 @@ test.describe('CSV Data API - Caching', () => {
   });
 
   test('should support viewport-based loading', async ({ request }) => {
-    const fileName = 'metadata-1759267238657.csv';
+  const fileName = 'metadata-1759267238658.csv';
     
     // Request with viewport parameters
     const response = await request.get(
@@ -81,7 +81,7 @@ test.describe('CSV Data API - Caching', () => {
   });
 
   test('should handle different center locations', async ({ request }) => {
-    const fileName = 'metadata-1759267238657.csv';
+  const fileName = 'metadata-1759267238658.csv';
     
     // Request for Kansas City area
     const kcResponse = await request.get(
@@ -106,7 +106,7 @@ test.describe('CSV Data API - Caching', () => {
 
 test.describe('CSV Parsing Edge Cases', () => {
   test('should handle empty coordinate fields', async ({ request }) => {
-    const response = await request.get('/api/map/csv-data?fileName=metadata-1759267238657.csv');
+  const response = await request.get('/api/map/csv-data?fileName=metadata-1759267238658.csv');
     const data = await response.json();
     
     // Should not crash on empty coordinates
@@ -114,7 +114,7 @@ test.describe('CSV Parsing Edge Cases', () => {
   });
 
   test('should handle malformed coordinate strings', async ({ request }) => {
-    const response = await request.get('/api/map/csv-data?fileName=metadata-1759267238657.csv');
+  const response = await request.get('/api/map/csv-data?fileName=metadata-1759267238658.csv');
     const data = await response.json();
     
     // Should gracefully skip malformed coordinates
@@ -123,7 +123,7 @@ test.describe('CSV Parsing Edge Cases', () => {
   });
 
   test('should provide detailed parsing statistics', async ({ request }) => {
-    const response = await request.get('/api/map/csv-data?fileName=metadata-1759267238657.csv');
+  const response = await request.get('/api/map/csv-data?fileName=metadata-1759267238658.csv');
     const data = await response.json();
     
     // Response should include metadata about parsing
@@ -221,7 +221,7 @@ test.describe('Error Handling', () => {
 
 test.describe('Data Integrity', () => {
   test('should preserve data structure through parsing', async ({ request }) => {
-    const response = await request.get('/api/map/csv-data?fileName=metadata-1759267238657.csv');
+  const response = await request.get('/api/map/csv-data?fileName=metadata-1759267238658.csv');
     const data = await response.json();
     
     expect(data.success).toBe(true);
