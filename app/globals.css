@@ -37,6 +37,23 @@ body {
   -webkit-text-size-adjust: 100%;
 }
 
+/* Make rounded utility classes render as sharp corners only within the bottom stats panel */
+.bottom-stats [class*="rounded"] {
+  border-radius: 0 !important;
+}
+
+/* Bottom stats panel background and text color */
+.bottom-stats {
+  background-color: #18181B !important;
+}
+
+/* Red badge used in map popups */
+.badge-red {
+  background-color: rgba(186, 12, 47, 1) !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(234, 171, 0, 1) !important;
+}
+
 /* Adjust map overlay positioning on mobile */
 @media (max-width: 639px) {
   /* Default positioning when menu is closed - right below navbar (60px height) */

@@ -77,21 +77,28 @@ export default function LocationList({
   }, []);
 
   // Choose positioning: fixed (default) or absolute when inline inside a container
-  // On mobile, position below search overlay to avoid overlap
+  // On mobile, when inline we use absolute so it stacks inside the parent overlay
+  // When inline we want the list to participate in normal document flow (no fixed/absolute)
+  // so it stacks cleanly under the search/filter area. Only use fixed positioning when
+  // rendering as a standalone sidebar overlay (not inline).
   const posClass = inline
-    ? `fixed sm:absolute ${isRight ? 'top-0 sm:top-4 right-2 sm:right-4' : 'top-0 sm:top-4 left-2 sm:left-4'}`
+    ? ''
     : `fixed top-20 ${isRight ? 'right-2 sm:right-4' : 'left-2 sm:left-4'}`;
 
   // When collapsed, override width so the handle is wide enough to show the label
   // Mobile: full width minus padding, Desktop: use provided width
-  const asideWidthClass = collapsed 
-    ? 'w-[calc(100%-1rem)] sm:w-40' 
-    : 'w-[calc(100%-1rem)] sm:w-80 max-w-[calc(100vw-1rem)] sm:max-w-none';
+  const asideWidthClass = inline
+    ? 'w-full'
+    : collapsed
+      ? 'w-[calc(100%-1rem)] sm:w-40'
+      : 'w-[calc(100%-1rem)] sm:w-80 max-w-[calc(100vw-1rem)] sm:max-w-none';
 
   return (
     <>
-      {/* Overlay to slightly darken the map when expanded. Clicking it collapses the list. */}
-      {!collapsed && (
+      {/* Overlay to slightly darken the map when expanded. Clicking it collapses the list.
+          When `inline` is true we are rendering inside the parent overlay (SearchOverlay),
+          so don't render the full-screen backdrop to avoid darkening and overlapping. */}
+      {!collapsed && !inline && (
         <div
           className="fixed inset-0 bg-black/25 z-40"
           onClick={() => setCollapsed(true)}
@@ -101,7 +108,7 @@ export default function LocationList({
 
       <aside
         aria-label="Location list"
-        className={`map-location-list ${posClass} ${asideWidthClass} max-h-[70vh] sm:max-h-[75vh] bg-white/95 backdrop-blur-sm ${collapsed ? 'border-0' : 'border border-gray-200'} rounded-lg shadow-xl z-45 sm:z-50 overflow-hidden`}
+        className={`map-location-list ${posClass} ${asideWidthClass} max-h-[70vh] sm:max-h-[75vh] bg-white/95 backdrop-blur-sm ${collapsed ? 'border-0' : 'border border-gray-200'} rounded-lg shadow-xl ${inline ? 'z-10' : 'z-45 sm:z-50'} overflow-hidden`}
       >
         {/* Header with collapse control */}
         <div

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
 import { promises as fs } from 'fs';
 import path from 'path';
+import { parseCategoryPairs } from '../../../lib/parseCategoryPairs';
 
 // IMPORTANT: AWS credentials are server-side only and should NEVER use NEXT_PUBLIC_ prefix
 const accessKeyId = process.env.AWS_ACCESS_KEY_ID || process.env.AMPLIFY_AWS_ACCESS_KEY_ID || '';
@@ -515,12 +516,15 @@ async function parseCSV(csvText: string, centerLat?: string, centerLng?: string,
         // Geo raw fields - keep but map to friendly names if present
         'geocoordinates (dd)': 'geoCoordinatesDD',
         'geocoordinates (dmm)': 'geoCoordinatesDMM',
+        // Custom columns from CSV
+        'categories_reformat': 'categoriesReformat',
+        'links': 'links',
       };
 
       // Build a cleaned location object: copy canonical fields we already populated
       const cleaned: any = {};
       // First, copy the canonical fields we already populated (organizationName, address, contact fields, etc.)
-      for (const k of ['id','organizationName','address','siteTypeCategory','tertiaryCategories','yearEstablished','builtPlaced','lat','lng','needsGeocoding','fullAddress','phone','email','facebook','instagram','website']) {
+      for (const k of ['id','organizationName','address','siteTypeCategory','tertiaryCategories','categoriesReformat','links','yearEstablished','builtPlaced','lat','lng','needsGeocoding','fullAddress','phone','email','facebook','instagram','website']) {
         if ((location as any)[k] !== undefined) cleaned[k] = (location as any)[k];
       }
 
@@ -556,6 +560,22 @@ async function parseCSV(csvText: string, centerLat?: string, centerLng?: string,
         if (cleaned.phone) console.log(`🔍 Mapped phone -> ${String(cleaned.phone).slice(0,60)}`);
         if (cleaned.email) console.log(`🔍 Mapped email -> ${String(cleaned.email).slice(0,60)}`);
       }
+
+        // Server-side: parse semicolon-separated CATEGORIES_REFORMAT and LINKS into structured pairs
+        // so the frontend can render badges and open links directly.
+        try {
+          // Reusable helper exported below for unit testing
+          const catSource = cleaned.categoriesReformat || '';
+          const pairs = parseCategoryPairs(catSource, cleaned.links || '');
+
+          // Attach structured pairs and arrays to cleaned object for easy frontend consumption
+          cleaned.categoryPairs = pairs;
+          cleaned.categories = pairs.map(p => p.raw);
+          cleaned.linksArray = pairs.map(p => p.url).filter(Boolean) as string[];
+        } catch (err) {
+          // Don't let parsing errors break the entire response
+          if (process.env.NODE_ENV === 'development') console.log('⚠️ categoryPairs parse error', err);
+        }
 
       // push the cleaned object
       locations.push(cleaned);
@@ -837,20 +857,30 @@ async function parseCSV(csvText: string, centerLat?: string, centerLng?: string,
   return finalLocations;
 }
 
+// Exported helper for parsing category pairs from CATEGORIES_REFORMAT and LINKS
+// parseCategoryPairs is now a pure utility imported from app/lib so tests can
+// import the parser without triggering server-side initializations in this
+// route module.
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const fileName = searchParams.get('fileName') || 'metadata-1759267238657.csv';
+    const fileName = searchParams.get('fileName') || 'metadata-1759267238658.csv';
     const centerLat = searchParams.get('centerLat');
     const centerLng = searchParams.get('centerLng');
     const isViewport = searchParams.get('viewport') === 'true';
+    // Optional cache bypass for development/testing: ?refresh=true
+    // NOTE: ignore refresh requests in production — only honor in non-production environments
+    const refreshRequested = searchParams.get('refresh') === 'true';
+    const allowRefresh = process.env.NODE_ENV !== 'production';
+    const refresh = refreshRequested && allowRefresh;
     
     // Create cache key based on parameters
     const cacheKey = `${fileName}_${centerLat || 'all'}_${centerLng || 'all'}_${isViewport ? 'viewport' : 'normal'}`;
     
     // Check cache first
     const cached = cache.get(cacheKey);
-    if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
+    if (cached && !refresh && Date.now() - cached.timestamp < CACHE_DURATION) {
       console.log(`🚀 Cache hit for ${cacheKey} (${cached.locationCount} locations)`);
       return NextResponse.json({
         success: true,
@@ -860,6 +890,12 @@ export async function GET(request: NextRequest) {
         source: 'cache',
         timestamp: new Date().toISOString()
       });
+    }
+    if (refreshRequested && !allowRefresh) {
+      // Do not perform a cache bypass in production; log minimally for visibility
+      console.log(`🔒 Ignoring refresh request for ${cacheKey} in production`);
+    } else if (refresh) {
+      console.log(`🔁 Refresh requested for ${cacheKey} — bypassing cache`);
     }
     
     if (process.env.NODE_ENV === 'development') {

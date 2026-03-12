@@ -201,7 +201,7 @@ test.describe('Security - Authentication', () => {
 
 test.describe('Security - Data Validation', () => {
   test('should validate coordinate data ranges', async ({ request }) => {
-    const response = await request.get('/api/map/csv-data?fileName=metadata-1759267238657.csv');
+  const response = await request.get('/api/map/csv-data?fileName=metadata-1759267238658.csv');
     
     // API may return 200 with sample data if file doesn't exist, or actual data
     if (response.ok()) {

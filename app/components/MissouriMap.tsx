@@ -2,7 +2,8 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { GoogleMap, useJsApiLoader } from '@react-google-maps/api';
-import LocationList from './layers/LocationList';
+// LocationList is now embedded in SearchOverlay; the map will broadcast locations via
+// a window event so the overlay can render them.
 import MapPopup from './layers/MapPopup';
 import SearchOverlay from './layers/SearchOverlay';
 
@@ -390,6 +391,7 @@ export default function MissouriMap({ fileName }: MissouriMapProps) {
     if (mapRef.current) createMarkers(mapRef.current, filteredLocations, true);
   }, [filteredLocations, createMarkers]);
 
+  // Clean up markers and timeouts when the component unmounts
   useEffect(() => {
     return () => {
       clearMarkers();
@@ -398,65 +400,6 @@ export default function MissouriMap({ fileName }: MissouriMapProps) {
         clearTimeout(boundsChangeTimeoutRef.current);
     };
   }, [clearMarkers]);
-
-  // Prefetch LOC URLs for visible categories in a single batch to speed up
-  // badge link appearance. Results are stored in sessionStorage under
-  // 'locUrlCache_v1' so CategoryBadge can read them instantly.
-  useEffect(() => {
-    if (!filteredLocations || filteredLocations.length === 0) return;
-    if (typeof window === 'undefined') return;
-
-    const cacheKey = 'locUrlCache_v1';
-    const raw = window.sessionStorage.getItem(cacheKey);
-    const cache = raw ? (JSON.parse(raw) as Record<string, string | null>) : {};
-
-    // Collect unique categories from visible locations (deduped)
-    const cats = new Set<string>();
-    for (const loc of filteredLocations) {
-      const catsRaw = [loc.siteTypeCategory, loc.tertiaryCategories]
-        .filter(Boolean)
-        .join(', ');
-      const parts = catsRaw
-        .split(/[,;/|]+/)
-        .map(s => s.trim())
-        .filter(Boolean);
-      for (const p of parts) cats.add(p);
-    }
-
-    // Remove ones already in cache and empty tokens, keep only unique list
-    const allCandidates = Array.from(cats).filter(
-      c => c && String(c).trim().length > 0
-    );
-    const uncached = allCandidates.filter(c => !(c in cache));
-    if (uncached.length === 0) return;
-
-    // Limit batch size to avoid huge requests (cap configurable here)
-    const BATCH_CAP = 50;
-    const toResolve = uncached.slice(0, BATCH_CAP);
-
-    // Call batch endpoint for up to BATCH_CAP unique labels
-    (async () => {
-      try {
-        const res = await fetch('/api/loc/subjects', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ qs: toResolve }),
-        });
-        if (!res.ok) return;
-        const body = await res.json();
-        const results: Record<string, string | null> = body?.results ?? {};
-        const newCache = { ...(cache || {}) } as Record<string, string | null>;
-        for (const k of Object.keys(results)) newCache[k] = results[k] ?? null;
-        try {
-          window.sessionStorage.setItem(cacheKey, JSON.stringify(newCache));
-        } catch (e) {
-          // ignore storage errors
-        }
-      } catch (e) {
-        // fail silently
-      }
-    })();
-  }, [filteredLocations]);
 
   // Map center and zoom helpers
   const stLouisDowntown = { lat: 38.627, lng: -90.1994 };
@@ -484,10 +427,34 @@ export default function MissouriMap({ fileName }: MissouriMapProps) {
     return 7;
   };
 
+  const handleZoomIn = () => {
+    if (!mapRef.current) return;
+    const currentZoom = mapRef.current.getZoom() ?? getZoomLevel();
+    mapRef.current.setZoom(currentZoom + 1);
+  };
+
+  const handleZoomOut = () => {
+    if (!mapRef.current) return;
+    const currentZoom = mapRef.current.getZoom() ?? getZoomLevel();
+    mapRef.current.setZoom(currentZoom - 1);
+  };
+
+  const handleCenterOnUser = () => {
+    if (!mapRef.current || !userLocation) return;
+    try {
+      mapRef.current.panTo(userLocation);
+      const currentZoom = mapRef.current.getZoom() ?? getZoomLevel();
+      mapRef.current.setZoom(Math.max(currentZoom, 10));
+    } catch (e) {
+      console.warn('[Map] center on user failed', e);
+    }
+  };
+
   // When a location is selected from the list, center the map and open the popup
   const handleLocationSelect = useCallback((loc: LocationData) => {
     setSelectedLocation(loc);
     setSelectedLocationId(loc.id);
+    setShowDetailed(false);
     if (mapRef.current && loc.lat && loc.lng) {
       try {
         mapRef.current.panTo({ lat: loc.lat, lng: loc.lng });
@@ -497,6 +464,22 @@ export default function MissouriMap({ fileName }: MissouriMapProps) {
       }
     }
   }, []);
+
+  // Register handler for selections coming from the SearchOverlay's LocationList
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent)?.detail;
+      if (detail && detail.location) {
+        handleLocationSelect(detail.location);
+      }
+    };
+    window.addEventListener('search-overlay-select', handler as EventListener);
+    return () =>
+      window.removeEventListener(
+        'search-overlay-select',
+        handler as EventListener
+      );
+  }, [handleLocationSelect]);
 
   // Render fallbacks
   if (loadError)
@@ -512,32 +495,34 @@ export default function MissouriMap({ fileName }: MissouriMapProps) {
   if (error) return <div className="text-red-600">Error: {error}</div>;
 
   return (
-    <div className="space-y-0 sm:space-y-2 md:space-y-4">
-      {/* Map - make map fill the full viewport height */}
-      <div className="relative h-screen w-full rounded-none sm:rounded-lg md:rounded-xl overflow-hidden border-0 sm:border-2 md:border-4 border-blue-300 shadow-none sm:shadow-lg md:shadow-2xl">
+    <div className="flex flex-col h-full">
+      {/* Map - fill remaining vertical space provided by parent */}
+      <div className="relative flex-1 min-h-0 w-full rounded-none sm:rounded-lg md:rounded-xl overflow-hidden border-0 sm:border-2 md:border-4 border-blue-300 shadow-none sm:shadow-lg md:shadow-2xl">
         <GoogleMap
           mapContainerStyle={{ width: '100%', height: '100%' }}
           center={mapCenter}
           zoom={getZoomLevel()}
           onLoad={onMapLoad}
+          onClick={() => {
+            setSelectedLocation(null);
+            setSelectedLocationId(null);
+            setShowDetailed(false);
+          }}
           options={{
-            // hide the Map/Satellite toggle
-            mapTypeControl: false,
-            // force the default map type to roadmap (optional)
+            // Minimal UI: disable default controls to remove Pegman and extra boxes
+            disableDefaultUI: true,
+            // keep map type as roadmap
             mapTypeId: 'roadmap',
-            // Enable pegman / Street View control
-            streetViewControl: true,
-            // Hide fullscreen control
+            // explicitly disable other controls we don't want
+            streetViewControl: false,
             fullscreenControl: false,
-            // Mobile-friendly controls: hide zoom buttons
             zoomControl: false,
-            // Hide pan/rotate controls (remove move/rotate UI elements)
             panControl: false,
             rotateControl: false,
+            mapTypeControl: false,
+            scaleControl: false,
             // Better touch interaction on mobile
             gestureHandling: 'greedy',
-            // Keep default UI enabled except for the disabled controls above
-            disableDefaultUI: false,
           }}
         >
           {selectedLocation && (
@@ -552,15 +537,36 @@ export default function MissouriMap({ fileName }: MissouriMapProps) {
             />
           )}
         </GoogleMap>
+        {/* Custom zoom and center controls */}
+        <div className="pointer-events-none absolute right-3 bottom-3 z-50 flex flex-col gap-2 sm:right-4 sm:bottom-4">
+          <button
+            type="button"
+            onClick={handleZoomIn}
+            className="pointer-events-auto flex h-10 w-10 items-center justify-center rounded-md bg-zinc-900/90 text-lg font-bold text-white shadow-md hover:bg-zinc-800 focus:outline-none focus:ring-2 focus:ring-[#EAAB00]"
+            aria-label="Zoom in"
+          >
+            +
+          </button>
+          <button
+            type="button"
+            onClick={handleZoomOut}
+            className="pointer-events-auto flex h-10 w-10 items-center justify-center rounded-md bg-zinc-900/90 text-lg font-bold text-white shadow-md hover:bg-zinc-800 focus:outline-none focus:ring-2 focus:ring-[#EAAB00]"
+            aria-label="Zoom out"
+          >
+            −
+          </button>
+          <button
+            type="button"
+            onClick={handleCenterOnUser}
+            className="pointer-events-auto mt-1 flex h-10 w-10 items-center justify-center rounded-full bg-zinc-900/90 text-sm font-semibold text-white shadow-md hover:bg-zinc-800 focus:outline-none focus:ring-2 focus:ring-[#EAAB00]"
+            aria-label="Center map on your location"
+            disabled={!userLocation}
+          >
+            ⦿
+          </button>
+        </div>
         {/* Inline location list overlay inside the map viewport */}
-        <LocationList
-          locations={filteredLocations}
-          selectedId={selectedLocation?.id ?? selectedLocationId}
-          onSelect={handleLocationSelect}
-          position="right"
-          width="w-[calc(100%-1rem)] sm:w-80"
-          inline={true}
-        />
+        {/* LocationList moved into SearchOverlay; we broadcast filteredLocations via a window event. */}
 
         {/* Search overlay (left side). Filters appear when input is focused */}
         <SearchOverlay
@@ -572,6 +578,8 @@ export default function MissouriMap({ fileName }: MissouriMapProps) {
           setShowLibraries={setShowLibraries}
           showOthers={showOthers}
           setShowOthers={setShowOthers}
+          locations={filteredLocations}
+          onSelect={handleLocationSelect}
         />
       </div>
 
@@ -584,24 +592,22 @@ export default function MissouriMap({ fileName }: MissouriMapProps) {
       )}
 
       {/* Stats */}
-      <div className="text-center bg-gradient-to-r from-blue-100 to-green-100 rounded-lg sm:rounded-xl p-3 sm:p-4 md:p-6 border-2 border-blue-200 shadow-lg mx-2 sm:mx-0">
+      <div className="text-center bottom-stats text-zinc-300 p-3 sm:p-4 md:p-6 border-2 shadow-lg mx-2 sm:mx-0">
         {searchQuery ? (
           <div className="text-sm sm:text-base md:text-lg">
             <div className="flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2">
-              <span className="font-bold text-blue-800">
-                🔍 Search Results:
-              </span>
-              <span className="font-bold text-blue-600 text-lg sm:text-xl">
+              <span className="font-bold">🔍 Search Results:</span>
+              <span className="font-bold text-lg sm:text-xl">
                 {filteredLocations.length}
               </span>
-              <span className="text-blue-700 font-semibold text-xs sm:text-sm md:text-base">
+              <span className="font-semibold text-xs sm:text-sm md:text-base">
                 results found for
               </span>
-              <span className="font-bold text-blue-600 text-base sm:text-lg md:text-xl break-words">
+              <span className="font-bold text-base sm:text-lg md:text-xl wrap-break-word">
                 "{searchQuery}"
               </span>
             </div>
-            <div className="text-xs sm:text-sm text-blue-600 mt-2">
+            <div className="text-xs sm:text-sm mt-2">
               out of <span className="font-bold">{locations.length}</span> total
               Missouri locations
             </div>
@@ -609,19 +615,19 @@ export default function MissouriMap({ fileName }: MissouriMapProps) {
         ) : (
           <div className="text-sm sm:text-base md:text-lg">
             <div className="flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2">
-              <span className="font-bold text-green-800">📍 Showing</span>
-              <span className="font-bold text-green-600 text-lg sm:text-xl">
+              <span className="font-bold">📍 Showing</span>
+              <span className="font-bold text-lg sm:text-xl">
                 {filteredLocations.length}
               </span>
-              <span className="text-green-700 font-semibold text-xs sm:text-sm md:text-base">
+              <span className="font-semibold text-xs sm:text-sm md:text-base">
                 location{filteredLocations.length !== 1 ? 's' : ''}
               </span>
             </div>
-            <div className="text-xs sm:text-sm text-blue-600 mt-2">
+            <div className="text-xs sm:text-sm mt-2">
               out of <span className="font-bold">{locations.length}</span> total
               locations in Missouri
               {loadingViewport && (
-                <span className="ml-2 text-green-600">• Loading more...</span>
+                <span className="ml-2">• Loading more...</span>
               )}
             </div>
           </div>

@@ -7,6 +7,10 @@ on:
         description: 'PR Number to deploy'
         required: false
 
+env:
+  # Opt in to Node.js 24 runtime for JavaScript actions
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   create-deployment:
     runs-on: ubuntu-latest
@@ -18,7 +22,7 @@ jobs:
     
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
       

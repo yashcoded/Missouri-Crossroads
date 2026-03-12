@@ -6,13 +6,17 @@ on:
   pull_request:
     branches: [ main ]
 
+env:
+  # Opt in to Node.js 24 runtime for JavaScript actions
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   test:
     runs-on: ubuntu-latest
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
 
     - name: Install pnpm
       uses: pnpm/action-setup@v4
@@ -20,9 +24,9 @@ jobs:
         version: 10
 
     - name: Setup Node.js
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@v6
       with:
-        node-version: '20.x'
+        node-version: '24.x'
         cache: 'pnpm'
 
     - name: Install dependencies
@@ -52,7 +56,7 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
 
     - name: Install pnpm
       uses: pnpm/action-setup@v4
@@ -60,9 +64,9 @@ jobs:
         version: 10
 
     - name: Setup Node.js
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@v6
       with:
-        node-version: '20.x'
+        node-version: '24.x'
         cache: 'pnpm'
 
     - name: Install dependencies
@@ -96,7 +100,7 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
 
     - name: Install pnpm
       uses: pnpm/action-setup@v4
@@ -104,9 +108,9 @@ jobs:
         version: 10
 
     - name: Setup Node.js
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@v6
       with:
-        node-version: '20.x'
+        node-version: '24.x'
         cache: 'pnpm'
 
     - name: Install dependencies
@@ -133,7 +137,7 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
 
     - name: Install pnpm
       uses: pnpm/action-setup@v4
@@ -141,9 +145,9 @@ jobs:
         version: 10
 
     - name: Setup Node.js
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@v6
       with:
-        node-version: '20.x'
+        node-version: '24.x'
         cache: 'pnpm'
 
     - name: Install dependencies
