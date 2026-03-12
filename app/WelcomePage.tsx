@@ -117,7 +117,7 @@ function StackCard({
     <section
       ref={setRef}
       id={`slide-${index}`}
-      className="snap-start min-h-screen flex items-center justify-center px-4 py-8 sm:px-6 sm:py-10 md:px-8"
+      className="snap-center min-h-screen flex items-center justify-center px-4 py-8 sm:px-6 sm:py-10 md:px-8"
       style={{ scrollSnapStop: 'always' }}
     >
       <motion.article
@@ -249,7 +249,7 @@ const WelcomePage: React.FC = () => {
   }, []);
 
   return (
-    <div className="relative min-h-[calc(100vh-60px)] overflow-y-scroll snap-y snap-mandatory scroll-smooth bg-zinc-950">
+    <div className="relative h-[calc(100vh-60px)] overflow-y-scroll snap-y snap-mandatory scroll-smooth bg-zinc-950">
       {/* Global tiled background image, static behind all sections */}
       <div
         aria-hidden="true"
@@ -268,7 +268,7 @@ const WelcomePage: React.FC = () => {
           slideRefs.current[0] = el;
         }}
         id="slide-landing"
-        className="relative snap-start min-h-screen overflow-hidden flex items-center justify-center px-4 py-8 sm:px-6 sm:py-10 md:px-8"
+        className="relative snap-center min-h-screen overflow-hidden flex items-center justify-center px-4 py-8 sm:px-6 sm:py-10 md:px-8"
         style={{ scrollSnapStop: 'always' }}
       >
         <motion.div

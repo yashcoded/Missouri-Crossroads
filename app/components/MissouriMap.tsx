@@ -538,7 +538,7 @@ export default function MissouriMap({ fileName }: MissouriMapProps) {
           )}
         </GoogleMap>
         {/* Custom zoom and center controls */}
-        <div className="pointer-events-none absolute right-3 top-3 z-50 flex flex-col gap-2 sm:right-4 sm:top-4">
+        <div className="pointer-events-none absolute right-3 bottom-3 z-50 flex flex-col gap-2 sm:right-4 sm:bottom-4">
           <button
             type="button"
             onClick={handleZoomIn}
