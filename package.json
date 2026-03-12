@@ -63,6 +63,7 @@
     "embla-carousel-react": "^8.6.0",
     "input-otp": "^1.4.2",
     "lucide-react": "^0.544.0",
+    "motion": "^12.35.2",
     "multer": "^2.0.2",
     "next": "15.5.4",
     "next-pwa": "^5.6.0",

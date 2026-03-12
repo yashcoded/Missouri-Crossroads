@@ -537,32 +537,29 @@ export default function MissouriMap({ fileName }: MissouriMapProps) {
   if (error) return <div className="text-red-600">Error: {error}</div>;
 
   return (
-    <div className="space-y-0 sm:space-y-2 md:space-y-4">
-      {/* Map - make map fill the full viewport height */}
-      <div className="relative h-screen w-full rounded-none sm:rounded-lg md:rounded-xl overflow-hidden border-0 sm:border-2 md:border-4 border-blue-300 shadow-none sm:shadow-lg md:shadow-2xl">
+    <div className="flex flex-col h-full">
+      {/* Map - fill remaining vertical space provided by parent */}
+      <div className="relative flex-1 min-h-0 w-full rounded-none sm:rounded-lg md:rounded-xl overflow-hidden border-0 sm:border-2 md:border-4 border-blue-300 shadow-none sm:shadow-lg md:shadow-2xl">
         <GoogleMap
           mapContainerStyle={{ width: '100%', height: '100%' }}
           center={mapCenter}
           zoom={getZoomLevel()}
           onLoad={onMapLoad}
           options={{
-            // hide the Map/Satellite toggle
-            mapTypeControl: false,
-            // force the default map type to roadmap (optional)
+            // Minimal UI: disable default controls to remove Pegman and extra boxes
+            disableDefaultUI: true,
+            // keep map type as roadmap
             mapTypeId: 'roadmap',
-            // Enable pegman / Street View control
-            streetViewControl: true,
-            // Hide fullscreen control
+            // explicitly disable other controls we don't want
+            streetViewControl: false,
             fullscreenControl: false,
-            // Mobile-friendly controls: hide zoom buttons
             zoomControl: false,
-            // Hide pan/rotate controls (remove move/rotate UI elements)
             panControl: false,
             rotateControl: false,
+            mapTypeControl: false,
+            scaleControl: false,
             // Better touch interaction on mobile
             gestureHandling: 'greedy',
-            // Keep default UI enabled except for the disabled controls above
-            disableDefaultUI: false,
           }}
         >
           {selectedLocation && (
@@ -604,24 +601,22 @@ export default function MissouriMap({ fileName }: MissouriMapProps) {
       )}
 
       {/* Stats */}
-      <div className="text-center bg-gradient-to-r from-blue-100 to-green-100 rounded-lg sm:rounded-xl p-3 sm:p-4 md:p-6 border-2 border-blue-200 shadow-lg mx-2 sm:mx-0">
+      <div className="text-center bottom-stats text-zinc-300 p-3 sm:p-4 md:p-6 border-2 shadow-lg mx-2 sm:mx-0">
         {searchQuery ? (
           <div className="text-sm sm:text-base md:text-lg">
             <div className="flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2">
-              <span className="font-bold text-blue-800">
-                🔍 Search Results:
-              </span>
-              <span className="font-bold text-blue-600 text-lg sm:text-xl">
+              <span className="font-bold">🔍 Search Results:</span>
+              <span className="font-bold text-lg sm:text-xl">
                 {filteredLocations.length}
               </span>
-              <span className="text-blue-700 font-semibold text-xs sm:text-sm md:text-base">
+              <span className="font-semibold text-xs sm:text-sm md:text-base">
                 results found for
               </span>
-              <span className="font-bold text-blue-600 text-base sm:text-lg md:text-xl break-words">
+              <span className="font-bold text-base sm:text-lg md:text-xl wrap-break-word">
                 "{searchQuery}"
               </span>
             </div>
-            <div className="text-xs sm:text-sm text-blue-600 mt-2">
+            <div className="text-xs sm:text-sm mt-2">
               out of <span className="font-bold">{locations.length}</span> total
               Missouri locations
             </div>
@@ -629,19 +624,19 @@ export default function MissouriMap({ fileName }: MissouriMapProps) {
         ) : (
           <div className="text-sm sm:text-base md:text-lg">
             <div className="flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2">
-              <span className="font-bold text-green-800">📍 Showing</span>
-              <span className="font-bold text-green-600 text-lg sm:text-xl">
+              <span className="font-bold">📍 Showing</span>
+              <span className="font-bold text-lg sm:text-xl">
                 {filteredLocations.length}
               </span>
-              <span className="text-green-700 font-semibold text-xs sm:text-sm md:text-base">
+              <span className="font-semibold text-xs sm:text-sm md:text-base">
                 location{filteredLocations.length !== 1 ? 's' : ''}
               </span>
             </div>
-            <div className="text-xs sm:text-sm text-blue-600 mt-2">
+            <div className="text-xs sm:text-sm mt-2">
               out of <span className="font-bold">{locations.length}</span> total
               locations in Missouri
               {loadingViewport && (
-                <span className="ml-2 text-green-600">• Loading more...</span>
+                <span className="ml-2">• Loading more...</span>
               )}
             </div>
           </div>

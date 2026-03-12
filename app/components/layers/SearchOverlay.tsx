@@ -61,7 +61,7 @@ export default function SearchOverlay({
             value={value}
             onChange={e => onChange(e.target.value)}
             onFocus={() => setExpanded(true)}
-            placeholder="Search by organization, address, tags or categories"
+            placeholder="Search by name, address or tags"
             className="w-full pl-10 pr-3 sm:pl-12 sm:pr-3 h-11 sm:h-12 text-sm sm:text-base text-gray-800 border border-transparent rounded-lg focus:ring-2 focus:ring-blue-200 focus:border-blue-300 outline-none transition-all duration-150 shadow-md bg-white placeholder-gray-400 touch-manipulation"
           />
         </div>

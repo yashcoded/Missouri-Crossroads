@@ -4,6 +4,7 @@ import React, { useEffect } from 'react';
 // browser cannot call id.loc.gov directly (CORS). Instead the badge will
 // call our server-side proxy at `/api/loc/subject` which uses the resolver
 // server-side and is not subject to browser CORS.
+
 export interface LocationData {
   id: string;
   organizationName: string;
@@ -41,8 +42,17 @@ interface MapPopupProps {
   location: LocationData | null;
   onClose?: () => void;
 }
+
 import { InfoWindow } from '@react-google-maps/api';
 import GoogleMapsDirectionsLink from '../GoogleMapsDirectionsLink';
+
+const UMSL_RED = 'rgba(186, 12, 47, 1)';
+const UMSL_RED_SOFT = 'rgba(186, 12, 47, 0.18)';
+const UMSL_GOLD = 'rgba(234, 171, 0, 1)';
+const UMSL_GOLD_SOFT = 'rgba(234, 171, 0, 0.18)';
+const PANEL_BG = 'rgba(24, 24, 27, 0.94)';
+const PANEL_BG_LIGHT = 'rgba(39, 39, 42, 0.72)';
+const PANEL_BORDER = 'rgba(234, 171, 0, 0.18)';
 
 // Friendly labels for detailed view keys
 const LABELS: Record<string, string> = {
@@ -72,7 +82,7 @@ const LABELS: Record<string, string> = {
 export default function MapPopup(props: any) {
   const { location, detailed = false, onClose, onDetails } = props;
   if (!location || location.lat == null || location.lng == null) return null;
-  // Log when the location prop changes so we can see updates from refresh
+
   useEffect(() => {
     if (process.env.NODE_ENV === 'development') {
       console.log('Rendering MapPopup for location:', location);
@@ -80,79 +90,114 @@ export default function MapPopup(props: any) {
     }
   }, [location]);
 
-  // CategoryBadge and LOC search behavior removed — categories are rendered
-  // strictly from server-provided `categoryPairs` (label + url).
-  // helper to render values with simple linkification for urls and emails
   const renderValue = (val: any) => {
     if (val == null) return null;
     const s = String(val).trim();
     if (s === '') return null;
-    // simple url detection
+
     if (/^https?:\/\//i.test(s)) {
       return (
         <a
           href={s}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-blue-600 hover:underline"
+          className="break-all text-[#EAAB00] transition hover:text-white hover:underline"
         >
           {s}
         </a>
       );
     }
-    // email
+
     if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s)) {
       return (
-        <a href={`mailto:${s}`} className="text-blue-600 hover:underline">
+        <a
+          href={`mailto:${s}`}
+          className="break-all text-[#EAAB00] transition hover:text-white hover:underline"
+        >
           {s}
         </a>
       );
     }
-    // preserve line breaks for addresses or long text
+
     return (
-      <div className="whitespace-pre-wrap wrap-break-word text-slate-700">
-        {s}
-      </div>
+      <div className="whitespace-pre-wrap break-words text-zinc-300">{s}</div>
     );
   };
 
-  // normalize contact-like fields: return a trimmed string or null for
-  // placeholders like "N/A", "n/a", "NA", "unknown", or dash-only values.
   const normalizeContact = (v: any): string | null => {
     if (v == null) return null;
     const s = String(v).trim();
     if (s === '') return null;
     const low = s.toLowerCase();
-    // common placeholder patterns we want to ignore
     if (low === 'n/a' || low === 'na' || low === 'unknown' || low === 'none')
       return null;
-    if (/^n\/?a$/i.test(s)) return null; // n/a, N/A
-    if (/^[-—–]+$/.test(s)) return null; // '---' or em-dash
+    if (/^n\/?a$/i.test(s)) return null;
+    if (/^[-—–]+$/.test(s)) return null;
     return s;
   };
 
+  const renderCategoryBadge = (
+    p: { raw: string; label: string; url?: string },
+    i: number,
+    large = false
+  ) => {
+    const badge = (
+      <span
+        key={`cat-${i}`}
+        className={`inline-flex items-center rounded-full font-semibold text-white ${
+          large ? 'px-3 py-1 text-sm' : 'px-2 py-0.5 text-xs'
+        }`}
+        style={{
+          background: UMSL_RED_SOFT,
+          border: `1px solid ${UMSL_GOLD_SOFT}`,
+          boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)',
+        }}
+      >
+        {p.label}
+      </span>
+    );
+
+    if (p.url) {
+      return (
+        <a
+          key={`link-${i}`}
+          href={p.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="hover:underline"
+        >
+          {badge}
+        </a>
+      );
+    }
+
+    return badge;
+  };
+
   const basicContent = (
-    <div className="p-3 max-w-sm bg-white rounded shadow">
-      <h3 className="font-bold text-lg mb-2">
+    <div className="max-w-sm p-1 text-zinc-300">
+      <h3 className="mb-2 text-lg font-bold text-white">
         {location.organizationName || 'Unknown'}
       </h3>
 
-      {/* Divider */}
-      <div className="border-t border-slate-200 my-3" />
+      <div
+        className="my-3 border-t"
+        style={{ borderColor: 'rgba(234, 171, 0, 0.14)' }}
+      />
 
-      {/* Address */}
-      <div className="text-sm text-gray-700 mb-2">
+      <div className="mb-2 text-sm">
         <div>
-          <span className="font-semibold">{LABELS.address || 'Address'}:</span>
+          <span className="font-semibold text-zinc-200">
+            {LABELS.address || 'Address'}:
+          </span>
           <span className="ml-2">{renderValue(location.address) ?? '—'}</span>
         </div>
       </div>
 
-      {/* Contact */}
-      <div className="text-sm text-gray-700 mb-3">
+      <div className="mb-3 text-sm">
         <div>
-          <span className="font-semibold">Contact:</span>
-          <span className="ml-2 block wrap-break-word break-all whitespace-normal max-w-full">
+          <span className="font-semibold text-zinc-200">Contact:</span>
+          <span className="ml-2 block max-w-full break-all whitespace-normal">
             {(() => {
               const phone = normalizeContact(location.phone);
               const email = normalizeContact(location.email);
@@ -167,7 +212,7 @@ export default function MapPopup(props: any) {
                 return (
                   <a
                     href={`tel:${phone}`}
-                    className="text-blue-600 hover:underline wrap-break-word"
+                    className="break-all text-[#EAAB00] transition hover:text-white hover:underline"
                   >
                     {phone}
                   </a>
@@ -176,7 +221,7 @@ export default function MapPopup(props: any) {
                 return (
                   <a
                     href={`mailto:${email}`}
-                    className="text-blue-600 hover:underline wrap-break-word"
+                    className="break-all text-[#EAAB00] transition hover:text-white hover:underline"
                   >
                     {email}
                   </a>
@@ -187,7 +232,7 @@ export default function MapPopup(props: any) {
                     href={makeUrl(website)}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-blue-600 hover:underline wrap-break-word"
+                    className="break-all text-[#EAAB00] transition hover:text-white hover:underline"
                   >
                     {website}
                   </a>
@@ -198,7 +243,7 @@ export default function MapPopup(props: any) {
                     href={makeUrl(facebook)}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-blue-600 hover:underline wrap-break-word"
+                    className="break-all text-[#EAAB00] transition hover:text-white hover:underline"
                   >
                     Facebook
                   </a>
@@ -209,7 +254,7 @@ export default function MapPopup(props: any) {
                     href={makeUrl(instagram)}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-blue-600 hover:underline wrap-break-word"
+                    className="break-all text-[#EAAB00] transition hover:text-white hover:underline"
                   >
                     Instagram
                   </a>
@@ -224,7 +269,7 @@ export default function MapPopup(props: any) {
                   href={url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-blue-600 hover:underline"
+                  className="text-[#EAAB00] transition hover:text-white hover:underline"
                 >
                   Search for {location.organizationName || 'this place'}
                 </a>
@@ -234,40 +279,16 @@ export default function MapPopup(props: any) {
         </div>
       </div>
 
-      {/* Categories */}
-      <div className="flex flex-wrap gap-2 mb-3">
+      <div className="mb-3 flex flex-wrap gap-2">
         {location.categoryPairs && location.categoryPairs.length > 0
-          ? location.categoryPairs.map(
-              (p: { raw: string; label: string; url?: string }, i: number) => {
-                const badge = (
-                  <span
-                    key={`cat-${i}`}
-                    className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-800 border border-blue-200"
-                  >
-                    {p.label}
-                  </span>
-                );
-                if (p.url) {
-                  return (
-                    <a
-                      key={`link-${i}`}
-                      href={p.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="hover:underline"
-                    >
-                      {badge}
-                    </a>
-                  );
-                }
-                return badge;
-              }
-            )
+          ? location.categoryPairs.map((p, i) => renderCategoryBadge(p, i))
           : null}
       </div>
 
-      {/* Bottom actions: Directions (left) and Details (right) */}
-      <div className="mt-3 flex items-center justify-between">
+      <div
+        className="mt-3 flex items-center justify-between border-t pt-3"
+        style={{ borderColor: 'rgba(234, 171, 0, 0.14)' }}
+      >
         <div>
           <GoogleMapsDirectionsLink
             lat={location.lat}
@@ -276,6 +297,7 @@ export default function MapPopup(props: any) {
             label={location.organizationName}
           />
         </div>
+
         <div>
           <button
             onClick={() => {
@@ -288,7 +310,11 @@ export default function MapPopup(props: any) {
               } catch (e) {}
               onDetails?.();
             }}
-            className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700"
+            className="rounded px-3 py-1 text-white transition"
+            style={{
+              backgroundColor: UMSL_RED,
+              boxShadow: '0 8px 20px rgba(186,12,47,0.28)',
+            }}
           >
             Details
           </button>
@@ -297,7 +323,6 @@ export default function MapPopup(props: any) {
     </div>
   );
 
-  // Group related fields together for a cleaner detailed view
   const FIELD_GROUPS: { title: string; keys: string[] }[] = [
     {
       title: 'Contact & Address',
@@ -333,53 +358,28 @@ export default function MapPopup(props: any) {
   ]);
 
   const detailedContent = (
-    <div className="bg-white rounded shadow max-w-3xl w-full max-h-[80vh] overflow-y-auto overflow-x-hidden p-6">
+    <div className="w-full max-w-3xl max-h-full overflow-y-auto overflow-x-hidden p-1 text-zinc-300">
       <div className="mb-4">
-        <h3 className="font-extrabold text-2xl text-slate-800">
+        <h3 className="text-2xl font-extrabold text-white">
           {location.organizationName || 'Unknown'}
         </h3>
         {location.yearEstablished && (
-          <div className="text-sm text-slate-500 mt-1">
+          <div className="mt-1 text-sm text-zinc-500">
             Established: {location.yearEstablished}
           </div>
         )}
       </div>
 
-      {/* categories */}
-      <div className="flex flex-wrap gap-2 mb-4">
+      <div className="mb-4 flex flex-wrap gap-2">
         {location.categoryPairs && location.categoryPairs.length > 0
-          ? location.categoryPairs.map(
-              (p: { raw: string; label: string; url?: string }, i: number) => {
-                const badge = (
-                  <span
-                    key={`cat-${i}`}
-                    className="inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-blue-50 text-blue-800 border border-blue-100"
-                  >
-                    {p.label}
-                  </span>
-                );
-                if (p.url) {
-                  return (
-                    <a
-                      key={`link-${i}`}
-                      href={p.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="hover:underline"
-                    >
-                      {badge}
-                    </a>
-                  );
-                }
-                return badge;
-              }
+          ? location.categoryPairs.map((p, i) =>
+              renderCategoryBadge(p, i, true)
             )
           : null}
       </div>
 
       <div className="space-y-6">
         {FIELD_GROUPS.map((group, gi) => {
-          // collect visible fields in this group
           const entries = group.keys
             .map(k => ({ key: k, val: (location as any)[k] }))
             .filter(
@@ -388,28 +388,37 @@ export default function MapPopup(props: any) {
                 e.val !== null &&
                 String(e.val).trim() !== ''
             );
+
           if (entries.length === 0) return null;
+
           return (
             <div
               key={group.title}
-              className={`${gi > 0 ? 'pt-4 border-t-2 border-slate-300' : ''}`}
+              className={gi > 0 ? 'border-t pt-4' : ''}
+              style={gi > 0 ? { borderColor: 'rgba(234, 171, 0, 0.14)' } : {}}
             >
               <div className="mb-2">
-                <div className="text-xs uppercase tracking-wider font-semibold text-slate-600">
+                <div
+                  className="text-xs font-semibold uppercase tracking-wider"
+                  style={{ color: UMSL_GOLD }}
+                >
                   {group.title}
                 </div>
               </div>
 
-              <div className="space-y-3 pl-4">
+              <div className="space-y-3 pl-0 sm:pl-4">
                 {entries.map(({ key, val }) => (
-                  <div key={key} className="flex items-start gap-4">
-                    <div className="w-40 text-sm font-semibold text-slate-700 pt-1">
+                  <div
+                    key={key}
+                    className="flex flex-col gap-1 sm:flex-row sm:items-start sm:gap-4"
+                  >
+                    <div className="w-full pt-1 text-sm font-semibold text-zinc-400 sm:w-40">
                       {LABELS[key] ||
                         key
                           .replace(/([A-Z])/g, ' $1')
                           .replace(/^./, s => s.toUpperCase())}
                     </div>
-                    <div className="flex-1 min-w-0 text-sm text-slate-700">
+                    <div className="min-w-0 flex-1 text-sm text-zinc-300">
                       {renderValue(val)}
                     </div>
                   </div>
@@ -419,7 +428,6 @@ export default function MapPopup(props: any) {
           );
         })}
 
-        {/* render any remaining fields not in groups */}
         {Object.keys(location)
           .filter(
             k =>
@@ -429,17 +437,22 @@ export default function MapPopup(props: any) {
           .map(key => {
             const val = (location as any)[key];
             if (val == null || String(val).trim() === '') return null;
+
             const label =
               LABELS[key] ||
               key
                 .replace(/([A-Z])/g, ' $1')
                 .replace(/^./, s => s.toUpperCase());
+
             return (
-              <div key={key} className="flex items-start gap-4">
-                <div className="w-40 text-sm font-semibold text-slate-700 pt-1">
+              <div
+                key={key}
+                className="flex flex-col gap-1 sm:flex-row sm:items-start sm:gap-4"
+              >
+                <div className="w-full pt-1 text-sm font-semibold text-zinc-400 sm:w-40">
                   {label}
                 </div>
-                <div className="flex-1 min-w-0 text-sm text-slate-700">
+                <div className="min-w-0 flex-1 text-sm text-zinc-300">
                   {renderValue(val)}
                 </div>
               </div>
@@ -450,26 +463,34 @@ export default function MapPopup(props: any) {
   );
 
   if (detailed) {
-    // Render a centered DOM overlay covering the map viewport with a wide panel
-    // that overlays everything else (high z-index) and a semi-transparent backdrop.
     return (
-      <div className="absolute inset-0 z-[9998] flex items-center justify-center pointer-events-auto py-2 sm:py-4 md:py-8 px-2 sm:px-4 md:px-6">
-        {/* semi-transparent backdrop that closes on click */}
+      <div className="pointer-events-auto absolute inset-0 z-[9998] flex items-center justify-center px-2 py-2 sm:px-4 sm:py-4 md:px-6 md:py-8">
         <div
-          className="absolute inset-0 bg-black/50"
+          className="absolute inset-0 bg-black/60 backdrop-blur-[2px]"
           onClick={onClose}
           aria-hidden
         />
 
-        {/* centered panel: full-ish on mobile, 50% width on md+ screens, sits above all other UI */}
-        <div className="relative w-full md:w-1/2 max-w-full md:max-w-4xl max-h-[calc(100vh-5rem)] sm:max-h-[calc(100vh-4rem)] overflow-y-auto bg-white rounded-lg p-4 sm:p-6 shadow-2xl z-[9999]">
+        <div
+          className="relative z-[9999] max-h-full w-full max-w-full overflow-y-auto rounded-2xl p-4 shadow-2xl sm:p-6 md:w-1/2 md:max-w-4xl"
+          style={{
+            background: PANEL_BG,
+            border: `1px solid ${PANEL_BORDER}`,
+            boxShadow: '0 28px 80px rgba(0,0,0,0.45)',
+          }}
+        >
           <button
             aria-label="Close details"
             onClick={onClose}
-            className="absolute top-2 right-2 sm:-top-3 sm:-right-3 bg-white rounded-full p-2 sm:p-1 shadow-md hover:bg-gray-50 min-w-[44px] min-h-[44px] flex items-center justify-center touch-manipulation"
+            className="touch-manipulation absolute right-2 top-2 flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full p-2 shadow-md transition hover:scale-105 sm:-right-3 sm:-top-3 sm:p-1"
+            style={{
+              background: 'rgba(24, 24, 27, 0.98)',
+              border: `1px solid ${PANEL_BORDER}`,
+            }}
           >
             <svg
-              className="w-4 h-4 text-slate-700"
+              className="h-4 w-4"
+              style={{ color: UMSL_GOLD }}
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
@@ -489,17 +510,28 @@ export default function MapPopup(props: any) {
     );
   }
 
-  // basic panel rendered in bottom-right of the map viewport
   return (
-    <div className="absolute right-2 sm:right-4 bottom-2 sm:bottom-4 z-50 w-[calc(100%-4rem)] sm:w-80 max-w-[calc(100vw-4rem)] sm:max-w-none">
-      <div className="relative p-3 sm:p-4 bg-white rounded-lg sm:rounded shadow-lg sm:shadow">
+    <div className="absolute bottom-2 right-2 z-50 w-[calc(100%-4rem)] max-w-[calc(100vw-4rem)] sm:bottom-4 sm:right-4 sm:w-80 sm:max-w-none">
+      <div
+        className="relative rounded-xl p-3 shadow-2xl backdrop-blur-md sm:rounded-2xl sm:p-4"
+        style={{
+          background: PANEL_BG,
+          border: `1px solid ${PANEL_BORDER}`,
+          boxShadow: '0 20px 50px rgba(0,0,0,0.35)',
+        }}
+      >
         <button
           aria-label="Close popup"
           onClick={onClose}
-          className="absolute top-2 right-2 sm:-top-3 sm:-right-3 bg-white rounded-full p-2 sm:p-1 shadow-md hover:bg-gray-50 min-w-[44px] min-h-[44px] flex items-center justify-center touch-manipulation"
+          className="touch-manipulation absolute right-2 top-2 flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full p-2 shadow-md transition hover:scale-105 sm:-right-3 sm:-top-3 sm:p-1"
+          style={{
+            background: 'rgba(24, 24, 27, 0.98)',
+            border: `1px solid ${PANEL_BORDER}`,
+          }}
         >
           <svg
-            className="w-4 h-4 text-slate-700"
+            className="h-4 w-4"
+            style={{ color: UMSL_GOLD }}
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
