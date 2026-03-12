@@ -71,7 +71,7 @@ The platform’s codebase is published on GitHub under open-source licenses (Apa
       },
       {
         name: 'David Pham, M.S.',
-        title: 'Tech Lead',
+        title: 'Software Engineer',
         org: 'University of Missouri–St. Louis',
       },
       {
