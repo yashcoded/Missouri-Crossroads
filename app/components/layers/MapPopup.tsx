@@ -41,6 +41,8 @@ export interface LocationData {
 interface MapPopupProps {
   location: LocationData | null;
   onClose?: () => void;
+  detailed?: boolean;
+  onDetails?: () => void;
 }
 
 import { InfoWindow } from '@react-google-maps/api';
@@ -79,7 +81,7 @@ const LABELS: Record<string, string> = {
   id: 'ID',
 };
 
-export default function MapPopup(props: any) {
+export default function MapPopup(props: MapPopupProps) {
   const { location, detailed = false, onClose, onDetails } = props;
 
   if (!location || location.lat == null || location.lng == null) return null;
