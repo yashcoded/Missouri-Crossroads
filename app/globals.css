@@ -37,14 +37,9 @@ body {
   -webkit-text-size-adjust: 100%;
 }
 
-/* Make all rounded utility classes render as sharp corners */
-[class*="rounded"] {
+/* Make rounded utility classes render as sharp corners only within the bottom stats panel */
+.bottom-stats [class*="rounded"] {
   border-radius: 0 !important;
-}
-
-/* Force border color globally to the requested orange */
-[class*="border"] {
-  border-color: rgba(234, 171, 0, 1) !important;
 }
 
 /* Bottom stats panel background and text color */

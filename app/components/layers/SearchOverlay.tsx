@@ -124,11 +124,7 @@ export default function SearchOverlay({
               locations={locations}
               selectedId={null}
               onSelect={(loc: LocationData) => {
-                try {
-                  if (onSelect) onSelect(loc);
-                } catch (e) {
-                  // ignore
-                }
+                if (onSelect) onSelect(loc);
               }}
               inline={true}
               collapsible={false}

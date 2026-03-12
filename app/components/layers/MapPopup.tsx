@@ -1,9 +1,9 @@
 'use client';
 import React, { useEffect } from 'react';
-// Note: we intentionally do not import server resolver here because the
-// browser cannot call id.loc.gov directly (CORS). Instead the badge will
-// call our server-side proxy at `/api/loc/subject` which uses the resolver
-// server-side and is not subject to browser CORS.
+// Note: we intentionally do not import or call the LOC resolver on the client
+// because the browser cannot call id.loc.gov directly (CORS). Instead, the
+// server pre-resolves LOC category URLs and sends them to the client via
+// `categoryPairs`, so the badge can link directly without any client proxy.
 
 export interface LocationData {
   id: string;
@@ -116,7 +116,7 @@ export default function MapPopup(props: MapPopupProps) {
     }
 
     return (
-      <div className="whitespace-pre-wrap break-words text-zinc-300">{s}</div>
+      <div className="whitespace-pre-wrap wrap-break-word text-zinc-300">{s}</div>
     );
   };
 
@@ -464,7 +464,7 @@ export default function MapPopup(props: MapPopupProps) {
 
   if (detailed) {
     return (
-      <div className="pointer-events-auto absolute inset-0 z-[9998] flex items-center justify-center px-2 py-2 sm:px-4 sm:py-4 md:px-6 md:py-8">
+      <div className="pointer-events-auto absolute inset-0 z-9998 flex items-center justify-center px-2 py-2 sm:px-4 sm:py-4 md:px-6 md:py-8">
         <div
           className="absolute inset-0 bg-black/60 backdrop-blur-[2px]"
           onClick={onClose}
@@ -472,7 +472,7 @@ export default function MapPopup(props: MapPopupProps) {
         />
 
         <div
-          className="relative z-[9999] max-h-full w-full max-w-full overflow-y-auto rounded-2xl p-4 shadow-2xl sm:p-6 md:w-1/2 md:max-w-4xl"
+          className="relative z-9999 max-h-full w-full max-w-full overflow-y-auto rounded-2xl p-4 shadow-2xl sm:p-6 md:w-1/2 md:max-w-4xl"
           style={{
             background: PANEL_BG,
             border: `1px solid ${PANEL_BORDER}`,
@@ -482,7 +482,7 @@ export default function MapPopup(props: MapPopupProps) {
           <button
             aria-label="Close details"
             onClick={onClose}
-            className="touch-manipulation absolute right-2 top-2 flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full p-2 shadow-md transition hover:scale-105 sm:-right-3 sm:-top-3 sm:p-1"
+            className="touch-manipulation absolute right-2 top-2 flex min-h-11 min-w-11 items-center justify-center rounded-full p-2 shadow-md transition hover:scale-105 sm:-right-3 sm:-top-3 sm:p-1"
             style={{
               background: 'rgba(24, 24, 27, 0.98)',
               border: `1px solid ${PANEL_BORDER}`,
@@ -523,7 +523,7 @@ export default function MapPopup(props: MapPopupProps) {
         <button
           aria-label="Close popup"
           onClick={onClose}
-          className="touch-manipulation absolute right-2 top-2 flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full p-2 shadow-md transition hover:scale-105 sm:-right-3 sm:-top-3 sm:p-1"
+          className="touch-manipulation absolute right-2 top-2 flex min-h-11 min-w-11 items-center justify-center rounded-full p-2 shadow-md transition hover:scale-105 sm:-right-3 sm:-top-3 sm:p-1"
           style={{
             background: 'rgba(24, 24, 27, 0.98)',
             border: `1px solid ${PANEL_BORDER}`,

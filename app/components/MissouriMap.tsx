@@ -391,14 +391,7 @@ export default function MissouriMap({ fileName }: MissouriMapProps) {
     if (mapRef.current) createMarkers(mapRef.current, filteredLocations, true);
   }, [filteredLocations, createMarkers]);
 
-  // Broadcast filtered locations so the SearchOverlay (which now contains the
-  // LocationList) can render them. We also set a global variable for initial
-  // read by the overlay.
-  useEffect(() => {
-    // (Previously used an event-based bridge to the overlay; now we pass
-    // `filteredLocations` as props to `SearchOverlay` so no broadcast is needed.)
-  }, [filteredLocations]);
-
+  // Clean up markers and timeouts when the component unmounts
   useEffect(() => {
     return () => {
       clearMarkers();
@@ -407,65 +400,6 @@ export default function MissouriMap({ fileName }: MissouriMapProps) {
         clearTimeout(boundsChangeTimeoutRef.current);
     };
   }, [clearMarkers]);
-
-  // Prefetch LOC URLs for visible categories in a single batch to speed up
-  // badge link appearance. Results are stored in sessionStorage under
-  // 'locUrlCache_v1' so CategoryBadge can read them instantly.
-  useEffect(() => {
-    if (!filteredLocations || filteredLocations.length === 0) return;
-    if (typeof window === 'undefined') return;
-
-    const cacheKey = 'locUrlCache_v1';
-    const raw = window.sessionStorage.getItem(cacheKey);
-    const cache = raw ? (JSON.parse(raw) as Record<string, string | null>) : {};
-
-    // Collect unique categories from visible locations (deduped)
-    const cats = new Set<string>();
-    for (const loc of filteredLocations) {
-      const catsRaw = [loc.siteTypeCategory, loc.tertiaryCategories]
-        .filter(Boolean)
-        .join(', ');
-      const parts = catsRaw
-        .split(/[,;/|]+/)
-        .map(s => s.trim())
-        .filter(Boolean);
-      for (const p of parts) cats.add(p);
-    }
-
-    // Remove ones already in cache and empty tokens, keep only unique list
-    const allCandidates = Array.from(cats).filter(
-      c => c && String(c).trim().length > 0
-    );
-    const uncached = allCandidates.filter(c => !(c in cache));
-    if (uncached.length === 0) return;
-
-    // Limit batch size to avoid huge requests (cap configurable here)
-    const BATCH_CAP = 50;
-    const toResolve = uncached.slice(0, BATCH_CAP);
-
-    // Call batch endpoint for up to BATCH_CAP unique labels
-    (async () => {
-      try {
-        const res = await fetch('/api/loc/subjects', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ qs: toResolve }),
-        });
-        if (!res.ok) return;
-        const body = await res.json();
-        const results: Record<string, string | null> = body?.results ?? {};
-        const newCache = { ...(cache || {}) } as Record<string, string | null>;
-        for (const k of Object.keys(results)) newCache[k] = results[k] ?? null;
-        try {
-          window.sessionStorage.setItem(cacheKey, JSON.stringify(newCache));
-        } catch (e) {
-          // ignore storage errors
-        }
-      } catch (e) {
-        // fail silently
-      }
-    })();
-  }, [filteredLocations]);
 
   // Map center and zoom helpers
   const stLouisDowntown = { lat: 38.627, lng: -90.1994 };

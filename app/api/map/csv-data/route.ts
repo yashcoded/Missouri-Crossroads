@@ -590,8 +590,8 @@ async function parseCSV(csvText: string, centerLat?: string, centerLng?: string,
           return undefined;
         };
 
-  // Only use the explicit CATEGORIES_REFORMAT column — no fallbacks as requested
-  const catSource = cleaned.categoriesReformat || '';
+        // Only use the explicit CATEGORIES_REFORMAT column — no fallbacks as requested
+        const catSource = cleaned.categoriesReformat || '';
         const categories = splitSemicolon(catSource);
         const linksRaw = splitSemicolon(cleaned.links || '');
         const linksNormalized = linksRaw.map(l => normalizeUrl(l)).filter(Boolean) as string[];
@@ -605,8 +605,13 @@ async function parseCSV(csvText: string, centerLat?: string, centerLng?: string,
           } else if (linksNormalized.length === 1) {
             for (const c of categories) categoryPairs.push({ raw: c, label: labelFrom(c), url: linksNormalized[0] });
           } else {
+            // Mismatch between categories and links arrays — prefer undefined for missing URLs
+            if (process.env.NODE_ENV === 'development') {
+              console.warn('⚠️ Mismatch between categories and linksNormalized lengths', { categoriesLength: categories.length, linksNormalizedLength: linksNormalized.length });
+            }
             for (let i = 0; i < categories.length; i++) {
-              categoryPairs.push({ raw: categories[i], label: labelFrom(categories[i]), url: linksNormalized[i] });
+              const url = i < linksNormalized.length ? linksNormalized[i] : undefined;
+              categoryPairs.push({ raw: categories[i], label: labelFrom(categories[i]), url });
             }
           }
         }
@@ -903,15 +908,15 @@ async function parseCSV(csvText: string, centerLat?: string, centerLng?: string,
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-  const fileName = searchParams.get('fileName') || 'metadata-1759267238658.csv';
-  const centerLat = searchParams.get('centerLat');
-  const centerLng = searchParams.get('centerLng');
-  const isViewport = searchParams.get('viewport') === 'true';
-  // Optional cache bypass for development/testing: ?refresh=true
-  // NOTE: ignore refresh requests in production — only honor in non-production environments
-  const refreshRequested = searchParams.get('refresh') === 'true';
-  const allowRefresh = process.env.NODE_ENV !== 'production';
-  const refresh = refreshRequested && allowRefresh;
+    const fileName = searchParams.get('fileName') || 'metadata-1759267238658.csv';
+    const centerLat = searchParams.get('centerLat');
+    const centerLng = searchParams.get('centerLng');
+    const isViewport = searchParams.get('viewport') === 'true';
+    // Optional cache bypass for development/testing: ?refresh=true
+    // NOTE: ignore refresh requests in production — only honor in non-production environments
+    const refreshRequested = searchParams.get('refresh') === 'true';
+    const allowRefresh = process.env.NODE_ENV !== 'production';
+    const refresh = refreshRequested && allowRefresh;
     
     // Create cache key based on parameters
     const cacheKey = `${fileName}_${centerLat || 'all'}_${centerLng || 'all'}_${isViewport ? 'viewport' : 'normal'}`;
