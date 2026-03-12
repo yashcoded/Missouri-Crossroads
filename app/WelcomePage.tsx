@@ -66,17 +66,19 @@ The platform’s codebase is published on GitHub under open-source licenses (Apa
       },
       {
         name: 'Yash Bhatia, M.S.',
-        title: 'Tech Lead',
+        title: 'Lead Engineer',
         org: 'Center on Lived Religion, SLU',
+        email: 'ybhatia125@gmail.com',
       },
       {
         name: 'David Pham, M.S.',
         title: 'Software Engineer',
         org: 'University of Missouri–St. Louis',
+        email: 'khai1995pham@gmail.com',
       },
       {
         name: 'John S. Forrester, M.A.',
-        title: 'Content Creator',
+        title: 'Community Engagement Manager',
         org: 'University of Missouri–St. Louis',
         email: 'jsfpnd@umsl.edu',
       },
@@ -97,17 +99,7 @@ The platform’s codebase is published on GitHub under open-source licenses (Apa
   },
 ];
 
-const trackerSections: TrackerSection[] = [
-  {
-    id: 'slide-landing',
-    title: 'Home',
-  },
-  ...slides.map((slide, index) => ({
-    id: `slide-${index}`,
-    eyebrow: slide.eyebrow,
-    title: slide.title,
-  })),
-];
+const trackerSections: TrackerSection[] = [];
 
 const UMSL_RED = '#BA0C2F';
 const UMSL_GOLD = '#EAAB00';
@@ -185,6 +177,17 @@ function StackCard({
                     <div className="mt-1 text-sm text-zinc-500">
                       {person.org}
                     </div>
+
+                    {person.email && (
+                      <div className="mt-2 text-sm">
+                        <a
+                          href={`mailto:${person.email}`}
+                          className="text-[#EAAB00] underline-offset-2 hover:text-white hover:underline"
+                        >
+                          {person.email}
+                        </a>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -212,91 +215,6 @@ function StackCard({
         </div>
       </motion.article>
     </section>
-  );
-}
-
-function StickyPreviewTracker({
-  sections,
-  activeIndex,
-}: {
-  sections: TrackerSection[];
-  activeIndex: number;
-}) {
-  return (
-    <div className="pointer-events-none fixed right-6 top-1/2 z-50 hidden -translate-y-1/2 xl:block">
-      <div
-        className="rounded-2xl border p-4 shadow-xl backdrop-blur-md"
-        style={{
-          background: 'rgba(9, 9, 11, 0.72)',
-          borderColor: 'rgba(234,171,0,0.18)',
-          boxShadow: '0 12px 40px rgba(0,0,0,0.28)',
-        }}
-      >
-        <div
-          className="mb-4 text-[11px] uppercase tracking-[0.2em]"
-          style={{ color: 'rgba(234,171,0,0.72)' }}
-        >
-          Preview
-        </div>
-
-        <div className="flex items-start gap-4">
-          <div className="relative flex flex-col items-center gap-3 pt-1">
-            <div className="absolute top-1 bottom-1 w-px bg-zinc-800" />
-
-            {sections.map((section, index) => (
-              <button
-                key={section.id}
-                type="button"
-                aria-label={`Go to section ${index + 1}`}
-                className="pointer-events-auto relative"
-                onClick={() => {
-                  document
-                    .getElementById(section.id)
-                    ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                }}
-              >
-                <span
-                  className="block rounded-full transition-all duration-300"
-                  style={{
-                    width: index === activeIndex ? 14 : 9,
-                    height: index === activeIndex ? 14 : 9,
-                    backgroundColor:
-                      index === activeIndex ? UMSL_RED : 'rgb(82 82 91)',
-                    boxShadow:
-                      index === activeIndex
-                        ? `0 0 0 4px rgba(234,171,0,0.18), 0 0 24px rgba(186,12,47,0.35)`
-                        : 'none',
-                  }}
-                />
-              </button>
-            ))}
-          </div>
-
-          <div className="min-w-[180px]">
-            <div className="mb-2 text-xs uppercase tracking-[0.2em] text-zinc-500">
-              {String(activeIndex + 1).padStart(2, '0')} /{' '}
-              {String(sections.length).padStart(2, '0')}
-            </div>
-
-            <motion.div
-              key={activeIndex}
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.2, ease: 'easeOut' }}
-            >
-              <div
-                className="text-xs uppercase tracking-[0.2em]"
-                style={{ color: UMSL_GOLD }}
-              ></div>
-
-              <div className="mt-2 text-base font-semibold text-white">
-                {sections[activeIndex]?.title}
-              </div>
-            </motion.div>
-          </div>
-        </div>
-      </div>
-    </div>
   );
 }
 
@@ -331,10 +249,18 @@ const WelcomePage: React.FC = () => {
   }, []);
 
   return (
-    <div className="relative h-screen overflow-y-scroll snap-y snap-mandatory scroll-smooth bg-zinc-950">
-      <StickyPreviewTracker
-        sections={trackerSections}
-        activeIndex={activeIndex}
+    <div className="relative min-h-[calc(100vh-60px)] overflow-y-scroll snap-y snap-mandatory scroll-smooth bg-zinc-950">
+      {/* Global tiled background image, static behind all sections */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none fixed inset-0 opacity-25"
+        style={{
+          backgroundImage: "url('/icon-512x512.png')",
+          backgroundSize: '220px 220px',
+          backgroundRepeat: 'repeat',
+          backgroundPosition: 'top left',
+          filter: 'grayscale(0.2)',
+        }}
       />
 
       <section
@@ -342,14 +268,15 @@ const WelcomePage: React.FC = () => {
           slideRefs.current[0] = el;
         }}
         id="slide-landing"
-        className="snap-start min-h-screen flex items-center justify-center px-4 py-8 sm:px-6 sm:py-10 md:px-8"
+        className="relative snap-start min-h-screen overflow-hidden flex items-center justify-center px-4 py-8 sm:px-6 sm:py-10 md:px-8"
         style={{ scrollSnapStop: 'always' }}
       >
         <motion.div
-          initial={{ opacity: 0, y: 30 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.9, ease: 'easeOut' }}
-          className="mx-auto w-full max-w-6xl"
+          initial={{ opacity: 0, y: 30, filter: 'blur(8px)' }}
+          whileInView={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+          viewport={{ amount: 0.5, once: false }}
+          transition={{ duration: 0.6, ease: 'easeOut' }}
+          className="relative z-10 mx-auto w-full max-w-6xl"
         >
           <div className="max-w-3xl">
             <p

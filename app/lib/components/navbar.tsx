@@ -96,7 +96,7 @@ export default function Navbar() {
 
   return (
     <nav
-      className="w-full min-h-[60px] flex flex-row justify-between items-center px-4 md:px-6 py-3 text-white relative z-50 backdrop-blur-md border-b"
+      className="w-full min-h-[60px] flex flex-row justify-between items-center px-4 md:px-6 py-3 text-white sticky top-0 z-50 backdrop-blur-md border-b"
       style={{
         background: '#18181B',
         borderColor: 'rgba(234,171,0,0.25)',

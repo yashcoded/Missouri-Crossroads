@@ -427,10 +427,34 @@ export default function MissouriMap({ fileName }: MissouriMapProps) {
     return 7;
   };
 
+  const handleZoomIn = () => {
+    if (!mapRef.current) return;
+    const currentZoom = mapRef.current.getZoom() ?? getZoomLevel();
+    mapRef.current.setZoom(currentZoom + 1);
+  };
+
+  const handleZoomOut = () => {
+    if (!mapRef.current) return;
+    const currentZoom = mapRef.current.getZoom() ?? getZoomLevel();
+    mapRef.current.setZoom(currentZoom - 1);
+  };
+
+  const handleCenterOnUser = () => {
+    if (!mapRef.current || !userLocation) return;
+    try {
+      mapRef.current.panTo(userLocation);
+      const currentZoom = mapRef.current.getZoom() ?? getZoomLevel();
+      mapRef.current.setZoom(Math.max(currentZoom, 10));
+    } catch (e) {
+      console.warn('[Map] center on user failed', e);
+    }
+  };
+
   // When a location is selected from the list, center the map and open the popup
   const handleLocationSelect = useCallback((loc: LocationData) => {
     setSelectedLocation(loc);
     setSelectedLocationId(loc.id);
+    setShowDetailed(false);
     if (mapRef.current && loc.lat && loc.lng) {
       try {
         mapRef.current.panTo({ lat: loc.lat, lng: loc.lng });
@@ -479,6 +503,11 @@ export default function MissouriMap({ fileName }: MissouriMapProps) {
           center={mapCenter}
           zoom={getZoomLevel()}
           onLoad={onMapLoad}
+          onClick={() => {
+            setSelectedLocation(null);
+            setSelectedLocationId(null);
+            setShowDetailed(false);
+          }}
           options={{
             // Minimal UI: disable default controls to remove Pegman and extra boxes
             disableDefaultUI: true,
@@ -508,6 +537,34 @@ export default function MissouriMap({ fileName }: MissouriMapProps) {
             />
           )}
         </GoogleMap>
+        {/* Custom zoom and center controls */}
+        <div className="pointer-events-none absolute right-3 top-3 z-50 flex flex-col gap-2 sm:right-4 sm:top-4">
+          <button
+            type="button"
+            onClick={handleZoomIn}
+            className="pointer-events-auto flex h-10 w-10 items-center justify-center rounded-md bg-zinc-900/90 text-lg font-bold text-white shadow-md hover:bg-zinc-800 focus:outline-none focus:ring-2 focus:ring-[#EAAB00]"
+            aria-label="Zoom in"
+          >
+            +
+          </button>
+          <button
+            type="button"
+            onClick={handleZoomOut}
+            className="pointer-events-auto flex h-10 w-10 items-center justify-center rounded-md bg-zinc-900/90 text-lg font-bold text-white shadow-md hover:bg-zinc-800 focus:outline-none focus:ring-2 focus:ring-[#EAAB00]"
+            aria-label="Zoom out"
+          >
+            −
+          </button>
+          <button
+            type="button"
+            onClick={handleCenterOnUser}
+            className="pointer-events-auto mt-1 flex h-10 w-10 items-center justify-center rounded-full bg-zinc-900/90 text-sm font-semibold text-white shadow-md hover:bg-zinc-800 focus:outline-none focus:ring-2 focus:ring-[#EAAB00]"
+            aria-label="Center map on your location"
+            disabled={!userLocation}
+          >
+            ⦿
+          </button>
+        </div>
         {/* Inline location list overlay inside the map viewport */}
         {/* LocationList moved into SearchOverlay; we broadcast filteredLocations via a window event. */}
 
