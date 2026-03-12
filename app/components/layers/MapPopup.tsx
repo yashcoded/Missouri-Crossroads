@@ -82,15 +82,6 @@ const LABELS: Record<string, string> = {
 export default function MapPopup(props: any) {
   const { location, detailed = false, onClose, onDetails } = props;
 
-  // Always register hooks unconditionally. Move logging effect above early returns
-  // so React Hook rules are satisfied even when `location` is null.
-  useEffect(() => {
-    if (process.env.NODE_ENV === 'development' && location) {
-      console.log('Rendering MapPopup for location:', location);
-      console.log('MapPopup categoryPairs:', (location as any)?.categoryPairs);
-    }
-  }, [location]);
-
   if (!location || location.lat == null || location.lng == null) return null;
 
   const renderValue = (val: any) => {
