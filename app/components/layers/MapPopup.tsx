@@ -277,7 +277,10 @@ export default function MapPopup(props: MapPopupProps) {
 
       <div className="mb-3 flex flex-wrap gap-2">
         {location.categoryPairs && location.categoryPairs.length > 0
-          ? location.categoryPairs.map((p, i) => renderCategoryBadge(p, i))
+          ? location.categoryPairs.map(
+              (p: { raw: string; label: string; url?: string }, i: number) =>
+                renderCategoryBadge(p, i)
+            )
           : null}
       </div>
 
@@ -368,8 +371,9 @@ export default function MapPopup(props: MapPopupProps) {
 
       <div className="mb-4 flex flex-wrap gap-2">
         {location.categoryPairs && location.categoryPairs.length > 0
-          ? location.categoryPairs.map((p, i) =>
-              renderCategoryBadge(p, i, true)
+          ? location.categoryPairs.map(
+              (p: { raw: string; label: string; url?: string }, i: number) =>
+                renderCategoryBadge(p, i, true)
             )
           : null}
       </div>
