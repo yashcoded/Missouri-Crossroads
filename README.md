@@ -1,5 +1,7 @@
 # Missouri Crossroads - Interactive Historical Map
 
+**Co-Director:** [Adam Park](https://github.com/park353) | A digital public history project developed at the University of Missouri–St. Louis. Live at [missouricrossroads.org](https://missouricrossroads.org).
+
 A Next.js application that displays an interactive map of Missouri's historical locations, including museums, libraries, and other significant sites. Built with AWS services for data storage and authentication.
 
 ## 🗺️ Features
