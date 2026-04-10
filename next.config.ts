@@ -33,7 +33,7 @@ const pwaConfig = withPWA({
   skipWaiting: true,
   // Disable PWA in development to avoid webpack/Turbopack conflicts
   // PWA service workers are only generated during production builds
-  disable: process.env.NODE_ENV === "development",
+  disable: process.env.NODE_ENV === "development" || true, // Force disable for now to avoid build issues; re-enable when next-pwa supports Turbopack
   buildExcludes: [/app-build-manifest\.json$/],
   runtimeCaching: [
     {
