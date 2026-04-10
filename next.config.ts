@@ -33,9 +33,9 @@ const pwaConfig = withPWA({
   skipWaiting: true,
   // Disable PWA in development to avoid webpack/Turbopack conflicts
   // PWA service workers are only generated during production builds
-  //disable: process.env.NODE_ENV === "development" || true, // Force disable for now to avoid build issues; re-enable when next-pwa supports Turbopack
-  disable: true, // Temporarily disable PWA to avoid build issues; re-enable when next-pwa supports Turbopack
+  disable: process.env.NODE_ENV === "development", // Force disable for now to avoid build issues; re-enable when next-pwa supports Turbopack
   buildExcludes: [/app-build-manifest\.json$/],
+  navigateFallback: null, // Disable default navigation fallback to allow lambda to handle 404s
   runtimeCaching: [
     {
       urlPattern: /^https:\/\/fonts\.(?:gstatic|googleapis)\.com\/.*/i,
@@ -159,17 +159,6 @@ const pwaConfig = withPWA({
           maxAgeSeconds: 24 * 60 * 60, // 1 day
         },
         networkTimeoutSeconds: 10,
-      },
-    },
-    {
-      urlPattern: ({ request }: { request: Request }) => request.destination === "document",
-      handler: "NetworkFirst",
-      options: {
-        cacheName: "documents",
-        expiration: {
-          maxEntries: 32,
-          maxAgeSeconds: 24 * 60 * 60, // 1 day
-        },
       },
     },
   ],
