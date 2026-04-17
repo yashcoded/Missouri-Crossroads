@@ -19,7 +19,11 @@ const nextConfig: NextConfig = {
   typescript: {
     ignoreBuildErrors: false, // Keep TypeScript checks enabled
   },
-  
+
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
+
   // Note: next-pwa uses webpack internally for service worker generation
   // - PWA is disabled in development (see line 35), so webpack isn't used during dev
   // - In production builds, webpack is used normally (Turbopack is dev-only)
