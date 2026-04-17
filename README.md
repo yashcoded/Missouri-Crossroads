@@ -1,99 +1,144 @@
-# Missouri Crossroads - Interactive Historical Map
+<div align="center">
 
-A Next.js application that displays an interactive map of Missouri's historical locations, including museums, libraries, and other significant sites. Built with AWS services for data storage and authentication.
+# Missouri Crossroads
 
-## 🗺️ Features
+**Explore Missouri’s heritage on an interactive map** — museums, archives, historic markers, and more than **1,200** sites across the state, with search, filters, and rich place details.
 
-- **Interactive Map**: Google Maps integration showing 1000+ Missouri historical locations
-- **Location Categories**: Museums, Libraries, Educational Institutions, and more
-- **Search & Filter**: Find locations by name, address, tags, or categories
-- **Location-based Loading**: Optimized loading based on user's current location
-- **InfoWindow Details**: Click pins to view detailed information about each location
-- **AWS Integration**: S3 for data storage, DynamoDB for user management, Cognito for authentication
-- **Data Management**: Admin dashboard for editing and re-uploading location data
+[![Next.js](https://img.shields.io/badge/Next.js-15-000000?logo=next.js&logoColor=white)](https://nextjs.org/)
+[![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)](https://react.dev/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![AWS](https://img.shields.io/badge/AWS-Amplify%20%2F%20SDK-232F3E?logo=amazon-aws&logoColor=white)](https://aws.amazon.com/)
+[![License](https://img.shields.io/badge/License-MIT-4caf50.svg)](LICENSE)
 
-## 🚀 Quick Start
+[Live site](https://www.missouricrossroads.org/) · [Report an issue](https://github.com/yashb196/Missouri-Crossroads/issues) · [CI & Amplify docs](.github/GITHUB_ACTIONS.md)
+
+</div>
+
+---
+
+## Contents
+
+- [Why this project](#why-this-project)
+- [Features](#features)
+- [Stack](#stack)
+- [Quick start](#quick-start)
+- [Project layout](#project-layout)
+- [Database (reference)](#database-reference)
+- [Development](#development)
+- [API overview](#api-overview)
+- [Testing](#testing)
+- [Deployment](#deployment)
+- [Contributing](#contributing)
+- [License & acknowledgments](#license--acknowledgments)
+
+---
+
+## Why this project
+
+Missouri Crossroads (**MOX**) is a free, open-access platform for discovering and managing Missouri’s cultural and historical places. It combines a responsive map UI with AWS-backed APIs for data, auth, and admin workflows—built for researchers, educators, and the public.
+
+---
+
+## Features
+
+| | |
+|:---|:---|
+| **Map** | Google Maps–powered view of 1000+ locations with categories, pins, and detail panels |
+| **Discovery** | Search and filter by name, address, tags, or category |
+| **Performance** | Location-aware loading so the map stays fast as you pan and zoom |
+| **Accounts** | Cognito authentication; DynamoDB for users, notes, and admin logs |
+| **Media & data** | S3-backed assets; admin tools and CSV workflows for curating locations |
+
+---
+
+## Stack
+
+- **App:** Next.js (App Router), React, TypeScript, Tailwind CSS  
+- **Map:** Google Maps Platform  
+- **Cloud:** AWS (Cognito, DynamoDB, S3; deployable via Amplify—see [CI docs](.github/GITHUB_ACTIONS.md))  
+- **Quality:** ESLint, Prettier, Jest, Playwright  
+
+---
+
+## Quick start
 
 ### Prerequisites
 
-- Node.js 18+ 
-- pnpm (recommended) or npm
-- AWS Account with S3, DynamoDB, and Cognito services
-- Google Maps API key
+- Node.js **18+**
+- **pnpm** (recommended) or npm
+- AWS account (S3, DynamoDB, Cognito) and Google Maps API keys for full functionality
 
-### Installation
+### 1. Clone and install
 
-1. **Clone the repository**
-   ```bash
-   git clone <repository-url>
-   cd missouri-crossroads
-   ```
-
-2. **Install dependencies**
-   ```bash
-   pnpm install
-   ```
-
-3. **Set up environment variables**
-   ```bash
-   cp .env.example .env.local
-   ```
-   
-   Fill in your environment variables:
-   ```bash
-   # AWS Configuration (Public - Safe for client-side)
-   NEXT_PUBLIC_AWS_REGION=us-east-2
-   NEXT_PUBLIC_COGNITO_USER_POOL_ID=your_user_pool_id
-   NEXT_PUBLIC_COGNITO_CLIENT_ID=your_client_id
-   NEXT_PUBLIC_DYNAMODB_USERS_TABLE=missouri-crossroads-users
-   NEXT_PUBLIC_DYNAMODB_NOTES_TABLE=missouri-crossroads-notes
-   NEXT_PUBLIC_DYNAMODB_ADMIN_LOGS_TABLE=missouri-crossroads-admin-logs
-   
-   # AWS Secrets (Server-side ONLY - NEVER use NEXT_PUBLIC_ prefix!)
-   AWS_ACCESS_KEY_ID=your_access_key
-   AWS_SECRET_ACCESS_KEY=your_secret_key
-   S3_BUCKET_NAME=mr-crossroads-bucket
-   COGNITO_CLIENT_SECRET=your_client_secret
-   
-   # Google Maps API (Public - These keys are restricted by domain)
-   NEXT_PUBLIC_MAP_KEY=your_google_maps_api_key
-   NEXT_PUBLIC_PLACES_KEY=your_google_places_api_key
-   ```
-
-4. **Start the development server**
-   ```bash
-   pnpm dev
-   ```
-
-5. **Open your browser**
-   Navigate to [http://localhost:3000](http://localhost:3000)
-
-## 🏗️ Project Structure
-
-```
-├── app/
-│   ├── api/                    # API routes
-│   │   ├── admin/             # Admin operations
-│   │   ├── auth/              # Authentication
-│   │   ├── database/          # Database operations
-│   │   └── map/               # Map data API
-│   ├── components/            # React components
-│   │   └── MissouriMap.tsx    # Main map component
-│   ├── lib/                   # Utilities and services
-│   │   ├── config/            # AWS configuration
-│   │   ├── models/            # Data models
-│   │   └── utils/             # Utility functions
-│   └── map/                   # Map page
-├── components/ui/              # UI components (shadcn/ui)
-├── public/                     # Static assets
-└── types/                      # TypeScript type definitions
+```bash
+git clone https://github.com/yashb196/Missouri-Crossroads.git
+cd Missouri-Crossroads
+pnpm install
 ```
 
-## 🗄️ Database Schema
+### 2. Environment
 
-### DynamoDB Tables
+```bash
+cp .env.example .env.local
+```
 
-#### Users Table (`missouri-crossroads-users`)
+<details>
+<summary><strong>Example environment variables</strong> (click to expand)</summary>
+
+```bash
+# AWS (public / client-safe)
+NEXT_PUBLIC_AWS_REGION=us-east-2
+NEXT_PUBLIC_COGNITO_USER_POOL_ID=your_user_pool_id
+NEXT_PUBLIC_COGNITO_CLIENT_ID=your_client_id
+NEXT_PUBLIC_DYNAMODB_USERS_TABLE=missouri-crossroads-users
+NEXT_PUBLIC_DYNAMODB_NOTES_TABLE=missouri-crossroads-notes
+NEXT_PUBLIC_DYNAMODB_ADMIN_LOGS_TABLE=missouri-crossroads-admin-logs
+
+# AWS (server-only — never use NEXT_PUBLIC_ for secrets)
+AWS_ACCESS_KEY_ID=your_access_key
+AWS_SECRET_ACCESS_KEY=your_secret_key
+S3_BUCKET_NAME=mr-crossroads-bucket
+COGNITO_CLIENT_SECRET=your_client_secret
+
+# Google Maps (domain-restricted keys recommended)
+NEXT_PUBLIC_MAP_KEY=your_google_maps_api_key
+NEXT_PUBLIC_PLACES_KEY=your_google_places_api_key
+```
+
+</details>
+
+### 3. Run locally
+
+```bash
+pnpm dev
+```
+
+Open [http://localhost:3000](http://localhost:3000).
+
+---
+
+## Project layout
+
+```
+├── app/                 # Routes, layouts, UI
+│   ├── api/             # REST handlers (admin, auth, database, map)
+│   ├── lib/             # Config, models, utilities
+│   └── map/             # Map experience
+├── components/ui/       # Shared UI (e.g. shadcn-style primitives)
+├── public/              # Static assets
+├── tests/               # Playwright E2E specs
+└── types/               # Shared TypeScript types
+```
+
+---
+
+## Database reference
+
+<details>
+<summary><strong>Example DynamoDB shapes</strong> (click to expand)</summary>
+
+**Users (`missouri-crossroads-users`)**
+
 ```json
 {
   "id": "user-1234567890-abc123def",
@@ -107,7 +152,8 @@ A Next.js application that displays an interactive map of Missouri's historical 
 }
 ```
 
-#### Notes Table (`missouri-crossroads-notes`)
+**Notes (`missouri-crossroads-notes`)**
+
 ```json
 {
   "id": "note-1234567890-abc123def",
@@ -128,149 +174,84 @@ A Next.js application that displays an interactive map of Missouri's historical 
 }
 ```
 
-## 🛠️ Development
-
-### Available Scripts
-
-```bash
-# Development
-pnpm dev              # Start development server
-pnpm build            # Build for production
-pnpm start            # Start production server
-
-# Testing
-pnpm test             # Run tests
-pnpm test:watch       # Run tests in watch mode
-pnpm test:coverage    # Run tests with coverage
-
-# Linting & Formatting
-pnpm lint             # Run ESLint
-pnpm lint:fix         # Fix ESLint errors
-pnpm format           # Format code with Prettier
-
-# Database
-pnpm db:setup         # Set up DynamoDB tables
-pnpm db:seed          # Seed database with sample data
-```
-
-### Adding New Locations
-
-1. **Via Admin Dashboard**: Use the admin interface to add/edit locations
-2. **Via CSV Upload**: Upload a CSV file with location data
-3. **Via API**: Use the REST API endpoints to programmatically add locations
-
-### API Endpoints
-
-#### Map Data
-- `GET /api/map/csv-data` - Get location data for the map
-- `POST /api/admin/upload-csv` - Upload new CSV data
-
-#### Database Operations
-- `GET /api/database/users` - Get all users
-- `POST /api/database/users` - Create new user
-- `GET /api/database/notes` - Get all notes
-- `POST /api/database/notes` - Create new note
-
-#### Admin Operations
-- `GET /api/admin/stats` - Get admin statistics
-- `POST /api/admin/bulk-notes` - Bulk update/delete notes
-- `GET /api/admin/logs` - Get admin activity logs
-
-## 🧪 Testing
-
-### Running Tests
-
-```bash
-# Run all tests
-pnpm test
-
-# Run specific test file
-pnpm test MissouriMap.test.tsx
-
-# Run tests with coverage
-pnpm test:coverage
-```
-
-### Test Structure
-
-```
-├── __tests__/
-│   ├── components/           # Component tests
-│   ├── api/                 # API route tests
-│   ├── utils/               # Utility function tests
-│   └── integration/         # Integration tests
-```
-
-## 🚀 Deployment
-
-### Environment Setup
-
-1. **Production Environment Variables**
-   - Set all environment variables in your deployment platform
-   - Ensure AWS credentials have proper permissions
-   - Configure Google Maps API key for production domain
-
-2. **AWS Resources**
-   - S3 bucket for file storage
-   - DynamoDB tables for data persistence
-   - Cognito User Pool for authentication
-
-### Deploy to Vercel
-
-1. **Connect your repository to Vercel**
-2. **Set environment variables** in Vercel dashboard
-3. **Deploy** - Vercel will automatically build and deploy
-
-### Deploy to AWS
-
-1. **Build the application**
-   ```bash
-   pnpm build
-   ```
-
-2. **Deploy using AWS Amplify or similar service**
-
-## 🤝 Contributing
-
-1. **Fork the repository**
-2. **Create a feature branch**
-   ```bash
-   git checkout -b feature/amazing-feature
-   ```
-3. **Make your changes**
-4. **Run tests**
-   ```bash
-   pnpm test
-   ```
-5. **Commit your changes**
-   ```bash
-   git commit -m 'Add amazing feature'
-   ```
-6. **Push to the branch**
-   ```bash
-   git push origin feature/amazing-feature
-   ```
-7. **Open a Pull Request**
-
-## 📝 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🆘 Support
-
-If you encounter any issues:
-
-1. **Check the [Issues](https://github.com/your-org/missouri-crossroads/issues) page**
-2. **Create a new issue** with detailed information
-3. **Join our community discussions**
-
-## 🙏 Acknowledgments
-
-- Missouri Historical Society for location data
-- Google Maps Platform for mapping services
-- AWS for cloud infrastructure
-- Next.js team for the amazing framework
+</details>
 
 ---
 
-**Built with ❤️ for Missouri's historical heritage**
+## Development
+
+### Scripts
+
+```bash
+pnpm dev              # Dev server (Turbopack)
+pnpm build            # Production build
+pnpm start            # Run production build locally
+
+pnpm test             # Unit + E2E
+pnpm test:watch       # Jest watch
+pnpm test:coverage    # Coverage report
+
+pnpm lint             # ESLint
+pnpm lint:fix         # ESLint --fix
+pnpm format           # Prettier
+```
+
+### Adding locations
+
+- Admin UI, CSV upload, or API—see endpoints below.
+
+---
+
+## API overview
+
+| Area | Methods | Purpose |
+|------|---------|---------|
+| **Map** | `GET /api/map/csv-data` | Location data for the map |
+| | `POST /api/admin/upload-csv` | Upload CSV data |
+| **Users / notes** | `GET/POST /api/database/users`, `GET/POST /api/database/notes` | CRUD-style access |
+| **Admin** | `GET /api/admin/stats`, `POST /api/admin/bulk-notes`, `GET /api/admin/logs` | Operations & audit |
+
+---
+
+## Testing
+
+```bash
+pnpm test
+pnpm test MissouriMap.test.tsx   # single file
+pnpm test:coverage
+pnpm test:e2e                     # Playwright (see tests/README.md)
+```
+
+---
+
+## Deployment
+
+1. Configure **production env vars** on your host (Amplify, Vercel, etc.).  
+2. Ensure **Google Maps** keys allow your production domain.  
+3. **Build:** `pnpm build` — for AWS Amplify and GitHub Actions integration, see [`.github/GITHUB_ACTIONS.md`](.github/GITHUB_ACTIONS.md).
+
+---
+
+## Contributing
+
+1. Fork the repo and create a branch: `git checkout -b feature/your-feature`  
+2. Make changes and run `pnpm test`  
+3. Open a PR against `main`  
+
+Issues welcome: [github.com/yashb196/Missouri-Crossroads/issues](https://github.com/yashb196/Missouri-Crossroads/issues)
+
+---
+
+## License & acknowledgments
+
+Licensed under the **MIT License** — see [LICENSE](LICENSE).
+
+Thanks to contributors and partners in Missouri’s heritage community, **Google Maps Platform**, **AWS**, and the **Next.js** team.
+
+---
+
+<div align="center">
+
+**Built for Missouri’s historical heritage**
+
+</div>
